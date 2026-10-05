@@ -1,0 +1,28 @@
+name = "whasung-server"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# 프론트(GitHub Pages) 주소. 배포 후 실제 주소로 교체 (쉼표로 여러 개 가능)
+ALLOWED_ORIGINS = "http://localhost:5173"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "whasung-agency"
+database_id = "41b81223-2f2f-4445-9e61-54cdceed48e6"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "c285e086d6db4c05a9b106b2a0b2e528"
+
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "Hub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Hub"]
+
+# 비밀값(wrangler secret put): ADMIN_PIN, PIN_PEPPER, BLENDER_API_KEY

@@ -1,0 +1,11 @@
+{
+  "name": "whasung",
+  "private": true,
+  "workspaces": ["server", "web", "blender"],
+  "scripts": {
+    "server:dev": "npm run dev -w server",
+    "server:test": "npm run test -w server",
+    "web:dev": "npm run dev -w web"
+  }
+}
+

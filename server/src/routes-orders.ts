@@ -1,0 +1,216 @@
+import { Hono } from 'hono';
+import { z } from 'zod';
+import { anyUser, frontOnly } from './auth';
+import { hmacHex, timingSafeEqual } from './crypto';
+import { getDrawing, putDrawing } from './drawings-store';
+import { notify } from './hub';
+import { audit, createOrder, orderInputSchema, replaceItems } from './orders-service';
+import type { AppEnv } from './types';
+
+export const orders = new Hono<AppEnv>();
+
+interface OrderRow {
+  id: number;
+  status: 'pending' | 'making' | 'unpaid' | 'paid';
+  kind: 'cut' | 'make';
+  company: string;
+  actual_weight: number | null;
+  drawing_key: string | null;
+}
+
+const getOrder = (c: { env: AppEnv['Bindings'] }, id: number) =>
+  c.env.DB.prepare(`SELECT * FROM orders WHERE id = ?1`).bind(id).first<OrderRow>();
+
+// 목록: 작업장은 진행 중(대기/제작중) 오더만 본다
+orders.get('/', anyUser, async (c) => {
+  const user = c.get('user');
+  const q = c.req.query();
+  const where: string[] = [];
+  const args: (string | number)[] = [];
+  if (user.role === 'workshop') where.push(`status IN ('pending','making')`);
+  else if (q.status) {
+    where.push(`status = ?${args.push(q.status)}`);
+  }
+  if (q.company) where.push(`company LIKE ?${args.push(`%${q.company}%`)}`);
+  const sql = `SELECT id, company, kind, status, source, has_unknown_bar, theory_weight, actual_weight,
+                      drawing_key IS NOT NULL AS has_drawing, created_at, completed_at, paid_at
+                 FROM orders ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+                ORDER BY id DESC LIMIT 200`;
+  const { results } = await c.env.DB.prepare(sql).bind(...args).all();
+  return c.json(results);
+});
+
+orders.get('/:id', anyUser, async (c) => {
+  const id = Number(c.req.param('id'));
+  const order = await getOrder(c, id);
+  if (!order) return c.json({ error: '오더를 찾을 수 없습니다.' }, 404);
+  if (c.get('user').role === 'workshop' && !['pending', 'making'].includes(order.status)) {
+    return c.json({ error: '권한이 없습니다.' }, 403);
+  }
+  const { results: items } = await c.env.DB.prepare(
+    `SELECT id, bar_name, length_mm, qty, color, theory_weight FROM work_list WHERE order_id = ?1 ORDER BY id`,
+  )
+    .bind(id)
+    .all();
+  return c.json({ ...order, items });
+});
+
+// 작업지시서 전송 (직접 접수). manual_weight가 있으면 작업장 수기 건으로 바로 미납 처리
+orders.post('/', frontOnly, async (c) => {
+  const body = orderInputSchema
+    .extend({ manual_weight: z.number().positive().max(100000).optional() })
+    .safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: body.error.issues[0].message }, 400);
+  const { manual_weight, ...input } = body.data;
+  const user = c.get('user');
+  const r = await createOrder(c.env, input, {
+    source: manual_weight ? 'manual' : 'front',
+    createdBy: user.name,
+    actualWeight: manual_weight,
+  });
+  await audit(c.env, user.name, 'create', r.id, { company: input.company, kind: input.kind });
+  await notify(c.env, {
+    type: 'order_created', orderId: r.id, company: input.company,
+    message: `새 작업지시: ${input.company}`,
+    roles: manual_weight ? ['admin', 'staff'] : undefined,
+  });
+  return c.json(r, 201);
+});
+
+// 납입 전 수정: 업체명/내용/요구사항/무게/절단서
+orders.patch('/:id', frontOnly, async (c) => {
+  const id = Number(c.req.param('id'));
+  const body = orderInputSchema
+    .partial()
+    .extend({ actual_weight: z.number().positive().max(100000).optional() })
+    .safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: body.error.issues[0].message }, 400);
+  const order = await getOrder(c, id);
+  if (!order) return c.json({ error: '오더를 찾을 수 없습니다.' }, 404);
+  if (order.status === 'paid') return c.json({ error: '완납된 오더는 수정할 수 없습니다.' }, 409);
+
+  const { items, company, content, request_note, actual_weight, kind } = body.data;
+  await c.env.DB.prepare(
+    `UPDATE orders SET company = COALESCE(?1, company), content = COALESCE(?2, content),
+            request_note = COALESCE(?3, request_note), actual_weight = COALESCE(?4, actual_weight),
+            kind = COALESCE(?5, kind)
+      WHERE id = ?6`,
+  )
+    .bind(company ?? null, content ?? null, request_note ?? null, actual_weight ?? null, kind ?? null, id)
+    .run();
+  if (items) await replaceItems(c.env, id, items);
+  const user = c.get('user');
+  await audit(c.env, user.name, 'update', id, body.data);
+  await notify(c.env, {
+    type: 'order_updated', orderId: id, company: company ?? order.company,
+    message: `작업지시 수정: ${company ?? order.company}`,
+  });
+  return c.json({ ok: true });
+});
+
+// 무게 입력(작업장/프론트). 절단작업은 바로 미납, 제작작업은 제작중으로 넘어간다
+orders.post('/:id/weight', anyUser, async (c) => {
+  const id = Number(c.req.param('id'));
+  const body = z.object({ weight: z.number().positive().max(100000) }).safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: '무게를 숫자로 입력해 주세요.' }, 400);
+  const order = await getOrder(c, id);
+  if (!order) return c.json({ error: '오더를 찾을 수 없습니다.' }, 404);
+  if (order.status !== 'pending') return c.json({ error: '이미 무게가 입력된 오더입니다.' }, 409);
+
+  const next = order.kind === 'cut' ? 'unpaid' : 'making';
+  await c.env.DB.prepare(
+    `UPDATE orders SET actual_weight = ?1, status = ?2, cut_done_at = datetime('now'),
+            completed_at = CASE WHEN ?2 = 'unpaid' THEN datetime('now') END
+      WHERE id = ?3`,
+  )
+    .bind(body.data.weight, next, id)
+    .run();
+  const user = c.get('user');
+  await audit(c.env, user.name, 'weight', id, { weight: body.data.weight });
+  await notify(c.env, {
+    type: next === 'unpaid' ? 'order_completed' : 'weight_entered',
+    orderId: id, company: order.company,
+    message: next === 'unpaid'
+      ? `절단 완료: ${order.company} (${body.data.weight}kg)`
+      : `절단 완료, 제작 진행 중: ${order.company} (${body.data.weight}kg)`,
+    roles: ['admin', 'staff'],
+  });
+  return c.json({ status: next });
+});
+
+// 제작 완료
+orders.post('/:id/complete', anyUser, async (c) => {
+  const id = Number(c.req.param('id'));
+  const order = await getOrder(c, id);
+  if (!order) return c.json({ error: '오더를 찾을 수 없습니다.' }, 404);
+  if (order.kind !== 'make' || order.status !== 'making') {
+    return c.json({ error: '제작 중인 오더가 아닙니다.' }, 409);
+  }
+  await c.env.DB.prepare(`UPDATE orders SET status = 'unpaid', completed_at = datetime('now') WHERE id = ?1`).bind(id).run();
+  const user = c.get('user');
+  await audit(c.env, user.name, 'complete', id, {});
+  await notify(c.env, {
+    type: 'order_completed', orderId: id, company: order.company,
+    message: `제작 완료: ${order.company}`, roles: ['admin', 'staff'],
+  });
+  return c.json({ status: 'unpaid' });
+});
+
+// 납입(완납 처리)
+orders.post('/:id/pay', frontOnly, async (c) => {
+  const id = Number(c.req.param('id'));
+  const order = await getOrder(c, id);
+  if (!order) return c.json({ error: '오더를 찾을 수 없습니다.' }, 404);
+  if (order.status !== 'unpaid') return c.json({ error: '미납 상태의 오더만 납입 처리할 수 있습니다.' }, 409);
+  await c.env.DB.prepare(`UPDATE orders SET status = 'paid', paid_at = datetime('now') WHERE id = ?1`).bind(id).run();
+  const user = c.get('user');
+  await audit(c.env, user.name, 'pay', id, {});
+  await notify(c.env, {
+    type: 'order_paid', orderId: id, company: order.company,
+    message: `납입 완료: ${order.company}`, roles: ['admin', 'staff'],
+  });
+  return c.json({ status: 'paid' });
+});
+
+// 도면 업로드(HTML 원문 그대로)
+orders.put('/:id/drawing', frontOnly, async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!(await getOrder(c, id))) return c.json({ error: '오더를 찾을 수 없습니다.' }, 404);
+  const html = await c.req.text();
+  if (html.length > 10_000_000) return c.json({ error: '도면 파일이 너무 큽니다.' }, 413);
+  return c.json({ key: await putDrawing(c.env, id, html) });
+});
+
+// 도면은 새 창에서 열리므로 인증 헤더를 못 보낸다 → 짧은 유효기간의 서명 링크를 발급
+orders.get('/:id/drawing-link', anyUser, async (c) => {
+  const id = Number(c.req.param('id'));
+  const order = await getOrder(c, id);
+  if (!order?.drawing_key) return c.json({ error: '도면이 없습니다.' }, 404);
+  if (c.get('user').role === 'workshop' && !['pending', 'making'].includes(order.status)) {
+    return c.json({ error: '권한이 없습니다.' }, 403);
+  }
+  const exp = Math.floor(Date.now() / 1000) + 600;
+  const sig = await hmacHex(c.env.PIN_PEPPER, `drawing.${id}.${exp}`);
+  return c.json({ path: `/api/drawings/${id}?exp=${exp}&sig=${sig}` });
+});
+
+export const drawings = new Hono<AppEnv>();
+drawings.get('/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  const exp = Number(c.req.query('exp'));
+  const sig = c.req.query('sig') ?? '';
+  const expected = await hmacHex(c.env.PIN_PEPPER, `drawing.${id}.${exp}`);
+  if (!exp || exp < Date.now() / 1000 || !timingSafeEqual(sig, expected)) {
+    return c.text('링크가 만료되었습니다. 다시 열어 주세요.', 403);
+  }
+  const body = await getDrawing(c.env, id);
+  if (!body) return c.text('도면이 없습니다.', 404);
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      // 도면 안의 스크립트가 앱 데이터에 접근하지 못하도록 격리
+      'Content-Security-Policy': "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'",
+      'Cache-Control': 'private, no-store',
+    },
+  });
+});

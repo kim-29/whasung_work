@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>3D 도면</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: system-ui, 'Malgun Gothic', sans-serif; font-size: 18px; }
+  #app { display: flex; height: 100%; }
+  #view { flex: 1; min-width: 0; touch-action: none; }
+  #panel { width: 300px; max-width: 45vw; overflow-y: auto; background: #fff; border-left: 2px solid #d5dbe2; padding: 12px; }
+  h1 { font-size: 1.1rem; margin: 0 0 4px; }
+  #note { color: #556; font-size: .85rem; margin: 0 0 10px; }
+  button { min-height: 44px; border: 2px solid #c5ced8; border-radius: 10px; background: #fff; font-size: .9rem; font-weight: 700; padding: 0 10px; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .row { display: flex; align-items: center; gap: 10px; min-height: 48px; border-bottom: 1px solid #e5e9ee; font-size: .9rem; }
+  .row input { width: 24px; height: 24px; flex: none; }
+  #help { color: #667; font-size: .75rem; margin-top: 12px; }
+  @media (max-width: 700px) {
+    #app { flex-direction: column; }
+    #panel { width: 100%; max-width: none; height: 38%; border-left: 0; border-top: 2px solid #d5dbe2; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="view"></div>
+  <aside id="panel">
+    <h1 id="title"></h1>
+    <p id="note"></p>
+    <div class="btns">
+      <button id="all">모두 보이기</button>
+      <button id="none">모두 숨기기</button>
+      <button id="home">처음 시점</button>
+    </div>
+    <div id="list"></div>
+    <p id="help">돌리기: 한 손가락/왼쪽 버튼 · 확대/축소: 두 손가락 벌리기/휠 · 이동: 두 손가락 끌기/오른쪽 버튼</p>
+  </aside>
+</div>
+<script>window.__BARS__ = /*__BARS__*/[]; window.__INFO__ = /*__INFO__*/{};</script>
+<script>/*__VIEWER_BUNDLE__*/</script>
+</body>
+</html>

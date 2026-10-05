@@ -1,0 +1,42 @@
+@import 'tailwindcss';
+
+/* 처음 접한 분도 쓰기 쉽도록: 기본 글씨를 크게, 터치 영역을 넓게 */
+html {
+  font-size: 18px;
+}
+body {
+  background: #f4f6f8;
+  color: #1b2430;
+  -webkit-tap-highlight-color: transparent;
+}
+input,
+select,
+textarea {
+  min-height: 3rem;
+  width: 100%;
+  border: 2px solid #c5ced8;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.5rem 0.75rem;
+  font-size: 1rem;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: #1d6fdc;
+}
+input[type='checkbox'] {
+  width: 1.5rem;
+  min-height: 1.5rem;
+  height: 1.5rem;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+}
