@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api, fmtDate, fmtKg, fmtWon } from '../api';
+import { useAuth } from '../auth';
 import { KIND_LABEL, STATUS_LABEL, type Color, type Kind, type Status } from '../types';
 import { Badge, Button, Card, Field, useToast } from '../ui';
 import OrderDetailModal, { openDrawing } from './OrderDetailModal';
@@ -40,37 +41,82 @@ const Th = ({ children, right }: { children?: React.ReactNode; right?: boolean }
   <th className={`py-2 font-semibold ${right ? 'text-right' : ''}`}>{children}</th>
 );
 
+function TrashIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" />
+    </svg>
+  );
+}
+
 function Monthly() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const isAdmin = user!.role === 'admin';
   const [month, setMonth] = useState(thisMonth());
   const [detail, setDetail] = useState<number | null>(null);
   const q = useQuery({
     queryKey: ['monthly', month],
     queryFn: () =>
       api<{
-        summary: { count: number; total_weight: number; paid_count: number; unpaid_count: number };
-        orders: { id: number; company: string; kind: Kind; color: Color | null; status: Status; actual_weight: number | null; ordered_at: string; paid_at: string | null }[];
+        summary: { count: number; total_weight: number; total_amount: number; paid_count: number; unpaid_count: number };
+        orders: { id: number; company: string; kind: Kind; color: Color | null; status: Status; actual_weight: number | null; amount: number | null; ordered_at: string; completed_at: string | null; paid_at: string | null }[];
       }>(`/dashboard/monthly?month=${month}`),
   });
   const s = q.data?.summary;
+
+  const remove = async (o: { id: number; company: string; color: Color | null; status: Status; actual_weight: number | null }) => {
+    const label = `${o.company}${o.color ? ` (${o.color})` : ''} ${STATUS_LABEL[o.status]} ${fmtKg(o.actual_weight)}`;
+    if (!window.confirm(`${label}\n\n이 거래내역을 삭제할까요? 삭제하면 되돌릴 수 없습니다.`)) return;
+    try {
+      await api(`/orders/${o.id}`, { method: 'DELETE' });
+      qc.invalidateQueries();
+      toast(`${o.company} 거래내역을 삭제했습니다.`);
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  };
+
   return (
     <div className="space-y-2.5">
       <Field label="조회할 달" inline><input type="month" value={month} onChange={(e) => setMonth(e.target.value || thisMonth())} /></Field>
       {s && (
-        <Card className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+        <Card className="grid grid-cols-2 gap-3 text-center sm:grid-cols-5">
           <div><p className="text-sm text-slate-500">전체</p><p className="text-xl font-bold">{s.count}건</p></div>
           <div><p className="text-sm text-slate-500">총 무게</p><p className="text-xl font-bold">{fmtKg(s.total_weight)}</p></div>
+          <div><p className="text-sm text-slate-500">금액 합계</p><p className="text-xl font-bold">{fmtWon(s.total_amount)}</p></div>
           <div><p className="text-sm text-slate-500">완납</p><p className="text-xl font-bold">{s.paid_count ?? 0}건</p></div>
           <div><p className="text-sm text-slate-500">미납</p><p className="text-xl font-bold text-red-600">{s.unpaid_count ?? 0}건</p></div>
         </Card>
       )}
       {q.data?.orders.map((o) => (
-        <Card key={o.id} className="flex flex-wrap items-center gap-2 !p-3">
-          <span className="text-base font-bold">{o.company}</span>
-          <Badge>{KIND_LABEL[o.kind]}</Badge>
-          {o.color && <Badge>{o.color}</Badge>}
-          <Badge color={o.status === 'paid' ? 'green' : o.status === 'unpaid' ? 'red' : 'amber'}>{STATUS_LABEL[o.status]}</Badge>
-          <span className="text-sm text-slate-600">{fmtDate(o.ordered_at)} · {fmtKg(o.actual_weight)}</span>
-          <Button tone="plain" className="ml-auto !min-h-9 text-sm" onClick={() => setDetail(o.id)}>세부내역</Button>
+        <Card key={o.id} className="space-y-1.5 !p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-base font-bold">{o.company}</span>
+            <Badge>{KIND_LABEL[o.kind]}</Badge>
+            {o.color && <Badge>{o.color}</Badge>}
+            <Badge color={o.status === 'paid' ? 'green' : o.status === 'unpaid' ? 'red' : 'amber'}>{STATUS_LABEL[o.status]}</Badge>
+          </div>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <p className="text-sm text-slate-600">
+              지시 {fmtDate(o.ordered_at)}
+              {o.completed_at && <> · 완료 {fmtDate(o.completed_at)}</>}
+              {o.paid_at && <> · 납입 {fmtDate(o.paid_at)}</>}
+              {' · '}{fmtKg(o.actual_weight)}
+            </p>
+            {o.actual_weight != null && (
+              <p className={`text-base font-bold ${o.amount == null ? 'text-red-600' : ''}`}>{fmtWon(o.amount)}</p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button tone="plain" className="!min-h-9 text-sm" onClick={() => setDetail(o.id)}>세부내역</Button>
+            {isAdmin && (
+              <Button tone="plain" className="ml-auto flex !min-h-9 items-center gap-1.5 text-sm text-red-700" title="삭제" aria-label="삭제" onClick={() => remove(o)}>
+                <TrashIcon /> 삭제
+              </Button>
+            )}
+          </div>
         </Card>
       ))}
       {q.data?.orders.length === 0 && <p className="py-8 text-center text-slate-500">이 달의 거래내역이 없습니다.</p>}
@@ -78,7 +124,6 @@ function Monthly() {
     </div>
   );
 }
-
 function Usage() {
   const [from, setFrom] = useState(`${thisMonth()}-01`);
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));

@@ -10,6 +10,14 @@ export interface OrderFormValues {
   request_note: string;
   items: OrderItem[];
   manual_weight?: number;
+  /** 이미 무게가 입력된 오더를 수정할 때의 실제 무게 */
+  actual_weight?: number;
+}
+
+/** 수정할 오더의 실제 무게와 지시일 기준 단가 (실제 무게가 있으면 예상 견적 대신 실제 무게·금액을 보여준다) */
+export interface WeightInfo {
+  actual: number;
+  pricePerKg: number | null;
 }
 
 const emptyItem = (color: Color): OrderItem => ({ bar_name: '', length_mm: 0, qty: 1, color });
@@ -94,12 +102,14 @@ export default function OrderForm({
   submitLabel,
   allowManual,
   extra,
+  weightInfo,
   onSubmit,
 }: {
   initial?: OrderFormValues;
   submitLabel: string;
   allowManual?: boolean;
   extra?: ReactNode;
+  weightInfo?: WeightInfo;
   onSubmit: (v: OrderFormValues) => Promise<void>;
 }) {
   const bars = useQuery({ queryKey: ['bars'], queryFn: () => api<Bar[]>('/bars'), staleTime: 60_000 });
@@ -114,6 +124,7 @@ export default function OrderForm({
   const [items, setItems] = useState<OrderItem[]>(initial?.items.length ? initial.items : [emptyItem('화이트')]);
   const [manual, setManual] = useState(false);
   const [manualWeight, setManualWeight] = useState('');
+  const [actualWeight, setActualWeight] = useState(weightInfo ? String(weightInfo.actual) : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -145,6 +156,7 @@ export default function OrderForm({
       return setError('절단서의 바 이름, 길이, 수량을 모두 입력해 주세요.');
     const final = rows.map((it) => ({ ...it, color: colorOf(it) }));
     if (manual && !(Number(manualWeight) > 0)) return setError('실제 무게(kg)를 입력해 주세요.');
+    if (weightInfo && !(Number(actualWeight) > 0)) return setError('실제 무게(kg)를 숫자로 입력해 주세요.');
     if (manual && new Set(final.map((i) => i.color)).size > 1)
       return setError('수기 접수는 색상별로 나누어 따로 등록해 주세요.');
     setBusy(true);
@@ -152,6 +164,7 @@ export default function OrderForm({
       await onSubmit({
         company: company.trim(), kind, request_note: note, items: final,
         manual_weight: manual ? Number(manualWeight) : undefined,
+        actual_weight: weightInfo && Number(actualWeight) !== weightInfo.actual ? Number(actualWeight) : undefined,
       });
     } catch (e) {
       setError((e as Error).message);
@@ -214,7 +227,7 @@ export default function OrderForm({
                 </div>
                 <div className="mt-1.5 flex items-center justify-between">
                   <span className={`text-sm font-semibold ${unknown ? 'text-red-600' : 'text-slate-600'}`}>
-                    {unknown ? '목록에 없는 바입니다 (무게 계산 불가)' : `무게 ${fmtKg(rowWeights[i])}`}
+                    {unknown ? '목록에 없는 바입니다 (예상무게 계산 불가)' : `예상무게 ${fmtKg(rowWeights[i])}`}
                   </span>
                   {items.length > 1 && (
                     <Button tone="plain" type="button" className="!min-h-9 !px-3 text-sm" onClick={() => setItems((a) => a.filter((_, x) => x !== i))}>
@@ -231,24 +244,40 @@ export default function OrderForm({
         </Button>
       </Card>
 
-      <Card className="space-y-1.5">
-        <p className="text-lg font-bold">예상 총 무게 {fmtKg(total)}</p>
-        {byColor.map(([c, w]) => (
-          <p key={c} className="text-base text-slate-700">
-            {c} {fmtKg(w)} × {price.get(c) == null ? '단가 미설정' : `${price.get(c)!.toLocaleString('ko-KR')}원`}
-            {price.get(c) != null && <> = <b>{fmtWon(w * price.get(c)!)}</b></>}
+      {weightInfo ? (
+        <Card className="space-y-2">
+          <Field label="실제 무게(kg)" inline>
+            <input inputMode="decimal" value={actualWeight} onChange={(e) => setActualWeight(e.target.value.replace(/[^\d.]/g, ''))} />
+          </Field>
+          <p className="text-sm text-slate-600">
+            수정 전 무게 <b>{fmtKg(weightInfo.actual)}</b> · 예상무게 {fmtKg(total)}
           </p>
-        ))}
-        <p className="border-t border-slate-300 pt-2 text-xl font-bold">
-          예상 견적가 {unpriced.length ? '-' : fmtWon(estimate)}
-        </p>
-        {unpriced.length > 0 && (
-          <p className="text-sm font-semibold text-red-600">
-            {unpriced.map(([c]) => c).join(', ')} 단가가 설정되어 있지 않습니다. 설정 &gt; 색상별 단가에서 입력해 주세요.
+          <p className="border-t border-slate-300 pt-2 text-xl font-bold">
+            금액{' '}
+            {weightInfo.pricePerKg == null
+              ? <span className="text-red-600">단가 미설정</span>
+              : <>{fmtWon((Number(actualWeight) || 0) * weightInfo.pricePerKg)} <span className="text-sm font-normal text-slate-500">({weightInfo.pricePerKg.toLocaleString('ko-KR')}원/kg)</span></>}
           </p>
-        )}
-      </Card>
-
+        </Card>
+      ) : (
+        <Card className="space-y-1.5">
+          <p className="text-lg font-bold">예상 총 무게 {fmtKg(total)}</p>
+          {byColor.map(([c, w]) => (
+            <p key={c} className="text-base text-slate-700">
+              {c} {fmtKg(w)} × {price.get(c) == null ? '단가 미설정' : `${price.get(c)!.toLocaleString('ko-KR')}원`}
+              {price.get(c) != null && <> = <b>{fmtWon(w * price.get(c)!)}</b></>}
+            </p>
+          ))}
+          <p className="border-t border-slate-300 pt-2 text-xl font-bold">
+            예상 견적가 {unpriced.length ? '-' : fmtWon(estimate)}
+          </p>
+          {unpriced.length > 0 && (
+            <p className="text-sm font-semibold text-red-600">
+              {unpriced.map(([c]) => c).join(', ')} 단가가 설정되어 있지 않습니다. 설정 &gt; 색상별 단가에서 입력해 주세요.
+            </p>
+          )}
+        </Card>
+      )}
       {allowManual && (
         <Card className="space-y-2">
           <label className="flex items-center gap-3 text-base font-semibold">
@@ -267,7 +296,7 @@ export default function OrderForm({
 
       {error && <p className="rounded-xl border border-red-800 bg-red-100 p-3 text-base font-semibold text-red-700">{error}</p>}
       <Button className="w-full !min-h-14 text-lg" disabled={busy} onClick={submit}>
-        {busy ? '처리 중...' : submitLabel}
+        {busy ? '처리 중...' : manual ? '완료' : submitLabel}
       </Button>
     </div>
   );

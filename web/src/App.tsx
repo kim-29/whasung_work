@@ -16,18 +16,54 @@ const TABS = [
 
 const ROLE_LABEL = { admin: '관리자', staff: '직원', workshop: '작업장' } as const;
 
+/** 알루미늄 바 단면을 본뜬 간단한 로고 */
+function Logo() {
+  return (
+    <span className="flex items-center gap-2 whitespace-nowrap text-lg font-bold tracking-wide text-white">
+      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+        <rect x="1" y="3" width="20" height="3.5" fill="#d5d9dd" />
+        <rect x="1" y="9.25" width="20" height="3.5" fill="#fff" />
+        <rect x="1" y="15.5" width="20" height="3.5" fill="#d5d9dd" />
+      </svg>
+      화성알루미늄
+    </span>
+  );
+}
+
 function Shell() {
   const { user } = useAuth();
   useRealtime();
   const isFront = user!.role !== 'workshop';
 
   return (
-    <div className="mx-auto min-h-screen max-w-5xl bg-slate-100 pb-20 shadow-sm">
-      <header className="no-print sticky top-0 z-30 flex items-center justify-between bg-slate-900 px-4 py-3 text-white">
-        <span className="text-lg font-bold tracking-wide">화성 알루미늄</span>
-        <span className="text-sm text-slate-300">
-          {user!.name} · {ROLE_LABEL[user!.role]}
-        </span>
+    <div className="mx-auto min-h-screen max-w-5xl bg-slate-100 pb-8">
+      <header className="no-print sticky top-0 z-30 bg-slate-900 px-4 pt-3 text-white">
+        <div className="flex flex-wrap items-end gap-x-6">
+          <div className="order-1 flex flex-1 items-center justify-between pb-3 sm:flex-none sm:justify-start">
+            <Logo />
+          </div>
+          {isFront && (
+            <nav className="order-3 grid w-full grid-cols-4 sm:order-2 sm:flex sm:w-auto sm:gap-1">
+              {TABS.map((t) => (
+                <NavLink
+                  key={t.to}
+                  to={t.to}
+                  end
+                  className={({ isActive }) =>
+                    `cursor-pointer whitespace-nowrap border-b-4 px-1 pb-2.5 pt-2 text-center text-[15px] font-semibold sm:px-4 sm:text-base ${
+                      isActive ? 'border-orange-500 text-white' : 'border-white text-slate-300 hover:text-white'
+                    }`
+                  }
+                >
+                  {t.label}
+                </NavLink>
+              ))}
+            </nav>
+          )}
+          <span className="order-2 ml-auto whitespace-nowrap pb-3 text-sm text-slate-300 sm:order-3">
+            {user!.name} · {ROLE_LABEL[user!.role]}
+          </span>
+        </div>
       </header>
       <main className="p-3 sm:p-5">
         <Routes>
@@ -38,26 +74,6 @@ function Shell() {
           <Route path="*" element={<Navigate to={isFront ? '/' : '/work'} replace />} />
         </Routes>
       </main>
-      {isFront && (
-        <nav className="no-print fixed inset-x-0 bottom-0 z-30 bg-slate-900 pb-[env(safe-area-inset-bottom)]">
-          <div className="mx-auto grid max-w-5xl grid-cols-4">
-            {TABS.map((t) => (
-              <NavLink
-                key={t.to}
-                to={t.to}
-                end
-                className={({ isActive }) =>
-                  `border-t-4 py-3.5 text-center text-base font-semibold ${
-                    isActive ? 'border-white bg-slate-800 text-white' : 'border-transparent text-slate-400'
-                  }`
-                }
-              >
-                {t.label}
-              </NavLink>
-            ))}
-          </div>
-        </nav>
-      )}
     </div>
   );
 }

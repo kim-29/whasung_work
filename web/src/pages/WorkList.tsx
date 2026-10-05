@@ -3,15 +3,18 @@ import { useState } from 'react';
 import { api, fmtDate, fmtKg } from '../api';
 import { useAuth } from '../auth';
 import { PushCard } from '../push';
-import { KIND_LABEL, STATUS_LABEL, type OrderSummary } from '../types';
+import { KIND_LABEL, STATUS_LABEL, type OrderDetail, type OrderSummary } from '../types';
 import { Badge, Button, Card, Field, useToast } from '../ui';
 import OrderDetailModal, { openDrawing } from './OrderDetailModal';
 
-function OrderCard({ o, siblings, isFront, onDetail }: { o: OrderSummary; siblings: number; isFront: boolean; onDetail: () => void }) {
+function OrderCard({ o, siblings, isFront, onEdit }: { o: OrderSummary; siblings: number; isFront: boolean; onEdit: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
+  const [open, setOpen] = useState(false);
   const [weight, setWeight] = useState('');
   const [busy, setBusy] = useState(false);
+  // 세부내역은 카드 안에서 접었다 폈다 한다 (펼칠 때 불러온다)
+  const detail = useQuery({ queryKey: ['order', o.id], queryFn: () => api<OrderDetail>(`/orders/${o.id}`), enabled: open });
 
   const run = async (fn: () => Promise<unknown>, ok: string) => {
     setBusy(true);
@@ -28,7 +31,7 @@ function OrderCard({ o, siblings, isFront, onDetail }: { o: OrderSummary; siblin
 
   const w = Number(weight);
   const confirmWeight = () => {
-    const msg = `${o.company}${o.color ? ` (${o.color})` : ''} 무게 ${w}kg 가 맞습니까?\n(예상 무게 ${fmtKg(o.theory_weight)})`;
+    const msg = `${o.company}${o.color ? ` (${o.color})` : ''} 무게 ${w}kg 가 맞습니까?\n(예상무게 ${fmtKg(o.theory_weight)})`;
     if (!window.confirm(msg)) return;
     run(
       () => api(`/orders/${o.id}/weight`, { body: { weight: w } }),
@@ -47,10 +50,43 @@ function OrderCard({ o, siblings, isFront, onDetail }: { o: OrderSummary; siblin
         {o.has_unknown_bar ? <Badge color="red">미등록 바</Badge> : null}
       </div>
       <p className="text-sm text-slate-600">
-        지시 {fmtDate(o.created_at, true)} · 예상 {fmtKg(o.theory_weight)}
+        지시 {fmtDate(o.created_at, true)} · 예상무게 {fmtKg(o.theory_weight)}
         {o.actual_weight != null && <> · 실제 <b>{fmtKg(o.actual_weight)}</b></>}
       </p>
 
+      <div className="flex flex-wrap gap-2">
+        <Button tone="plain" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          세부내역 {open ? '접기 ▲' : '보기 ▼'}
+        </Button>
+        {o.has_drawing ? <Button onClick={() => openDrawing(o.id).catch((e) => toast(e.message, 'error'))}>도면 보기</Button> : null}
+        {isFront && <Button tone="plain" onClick={onEdit}>내용 수정</Button>}
+      </div>
+
+      {open && (
+        <div className="rounded-xl border border-slate-300 bg-slate-50 p-3 text-base">
+          {!detail.data ? (
+            <p>불러오는 중...</p>
+          ) : (
+            <div className="space-y-2">
+              {detail.data.request_note && <p><b>별도 요구사항</b> {detail.data.request_note}</p>}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-base">
+                  <thead><tr className="border-b border-slate-400"><th className="py-1.5">바 이름</th><th>길이(mm)</th><th>수량</th><th>색상</th></tr></thead>
+                  <tbody>
+                    {detail.data.items.map((it) => (
+                      <tr key={it.id} className="border-b border-slate-200">
+                        <td className="py-1.5">{it.bar_name}</td><td>{it.length_mm}</td><td>{it.qty}</td><td>{it.color}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 무게 입력과 완료 버튼은 카드 맨 아래 */}
       {o.status === 'pending' && (
         <div className="flex items-end gap-2 rounded-xl border border-slate-300 bg-slate-100 p-2.5">
           <div className="flex-1">
@@ -67,11 +103,6 @@ function OrderCard({ o, siblings, isFront, onDetail }: { o: OrderSummary; siblin
           제작 완료
         </Button>
       )}
-
-      <div className="flex flex-wrap gap-2">
-        <Button tone="plain" onClick={onDetail}>{isFront ? '세부내역 / 수정' : '절단서 보기'}</Button>
-        {o.has_drawing ? <Button onClick={() => openDrawing(o.id).catch((e) => toast(e.message, 'error'))}>도면 보기</Button> : null}
-      </div>
     </Card>
   );
 }
@@ -79,26 +110,28 @@ function OrderCard({ o, siblings, isFront, onDetail }: { o: OrderSummary; siblin
 export default function WorkList() {
   const { user } = useAuth();
   const isFront = user!.role !== 'workshop';
-  const [detail, setDetail] = useState<number | null>(null);
+  const [editId, setEditId] = useState<number | null>(null);
   const q = useQuery({ queryKey: ['orders'], queryFn: () => api<OrderSummary[]>('/orders'), refetchInterval: 30_000 });
-  // 진행 중(대기, 제작중)인 작업만 보여준다. 미납·완납은 대시보드에서 확인한다.
-  const list = (q.data ?? []).filter((o) => o.status === 'pending' || o.status === 'making');
+  // 진행 중(대기, 제작중)인 작업만, 오래된 순으로 (새로 온 작업은 맨 아래 → 위에서부터 차례로 작업)
+  const list = (q.data ?? [])
+    .filter((o) => o.status === 'pending' || o.status === 'making')
+    .sort((a, b) => a.id - b.id);
   const groupSize = new Map<number, number>();
   list.forEach((o) => o.group_id && groupSize.set(o.group_id, (groupSize.get(o.group_id) ?? 0) + 1));
 
   return (
     <div className="space-y-3">
-      <h1 className="text-xl font-bold">작업목록 <span className="text-base font-normal text-slate-500">진행 중 {list.length}건</span></h1>
+      <h1 className="text-xl font-bold">작업목록 <span className="text-base font-normal text-slate-500">진행 중 {list.length}건 · 위에서부터 차례로 작업</span></h1>
       {!isFront && <PushCard />}
       {q.isLoading && <p className="text-base">불러오는 중...</p>}
       {q.isError && <p className="rounded-xl border border-red-800 bg-red-100 p-3 text-base font-semibold text-red-700">{(q.error as Error).message}</p>}
       {!q.isLoading && list.length === 0 && <p className="py-10 text-center text-lg text-slate-500">진행 중인 작업이 없습니다.</p>}
       <div className="space-y-2.5">
         {list.map((o) => (
-          <OrderCard key={o.id} o={o} siblings={o.group_id ? groupSize.get(o.group_id) ?? 1 : 1} isFront={isFront} onDetail={() => setDetail(o.id)} />
+          <OrderCard key={o.id} o={o} siblings={o.group_id ? groupSize.get(o.group_id) ?? 1 : 1} isFront={isFront} onEdit={() => setEditId(o.id)} />
         ))}
       </div>
-      {detail !== null && <OrderDetailModal id={detail} canEdit={isFront} onClose={() => setDetail(null)} />}
+      {editId !== null && <OrderDetailModal id={editId} canEdit startEditing onClose={() => setEditId(null)} />}
     </div>
   );
 }

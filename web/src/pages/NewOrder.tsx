@@ -1,14 +1,14 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../api';
-import { Button, Card, Field, useToast } from '../ui';
+import { Card, Field, useToast } from '../ui';
 import OrderForm, { type OrderFormValues } from './OrderForm';
 
 export default function NewOrder() {
   const qc = useQueryClient();
   const toast = useToast();
-  const [done, setDone] = useState<{ company: string; count: number; colors: string[] } | null>(null);
   const [drawing, setDrawing] = useState<File | null>(null);
+  // 전송하면 같은 화면이 비워진 상태로 돌아온다 (key를 바꿔 폼을 새로 만든다)
   const [formKey, setFormKey] = useState(0);
 
   const send = async (v: OrderFormValues) => {
@@ -20,23 +20,16 @@ export default function NewOrder() {
       );
     }
     qc.invalidateQueries();
-    setDone({ company: v.company, count: r.orders.length, colors: r.orders.map((o) => o.color) });
-  };
-
-  if (done) {
-    return (
-      <Card className="mt-8 space-y-3 text-center">
-        <p className="text-xl font-bold">{done.company} 작업지시를 전송했습니다</p>
-        {done.count > 1 && (
-          <p className="text-base text-slate-700">색상별로 {done.count}건으로 나누어 접수되었습니다. ({done.colors.join(', ')})</p>
-        )}
-        <p className="text-base text-slate-600">작업장 화면에 바로 표시됩니다.</p>
-        <Button className="w-full" onClick={() => { setDone(null); setDrawing(null); setFormKey((k) => k + 1); }}>
-          새 작업지시서 쓰기
-        </Button>
-      </Card>
+    const split = r.orders.length > 1 ? ` (색상별 ${r.orders.length}건: ${r.orders.map((o) => o.color).join(', ')})` : '';
+    toast(
+      v.manual_weight
+        ? `${v.company} 완료 처리했습니다. 미납 거래내역으로 넘어갔습니다.${split}`
+        : `${v.company} 작업지시를 작업장으로 전송했습니다.${split}`,
     );
-  }
+    setDrawing(null);
+    setFormKey((k) => k + 1);
+    window.scrollTo({ top: 0 });
+  };
 
   return (
     <div className="space-y-3">

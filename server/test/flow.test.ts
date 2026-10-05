@@ -121,7 +121,41 @@ describe('PIN 로그인 · 주문 흐름', () => {
 
     const byCompany = await (await call('/api/dashboard/by-company', { token: a.token })).json<{ company: string; total_amount: number }[]>();
     expect(byCompany.find((c) => c.company === '단가업체')?.total_amount).toBe(110000);
+
+    // 세부내역에 단가·금액이 나오고, 무게를 고치면 금액도 따라간다 (작업장에는 금액 숨김)
+    const detail = await (await call(`/api/orders/${first}`, { token: a.token })).json<{ price_per_kg: number; amount: number; actual_weight: number }>();
+    expect(detail).toMatchObject({ price_per_kg: 5000, amount: 50000, actual_weight: 10 });
+    expect((await call(`/api/orders/${first}`, { method: 'PATCH', body: JSON.stringify({ actual_weight: 12 }), token: a.token })).status).toBe(200);
+    expect((await (await call(`/api/orders/${first}`, { token: a.token })).json<{ amount: number }>()).amount).toBe(60000);
+
+    const month = await (await call('/api/dashboard/monthly', { token: a.token })).json<{ summary: { total_amount: number }; orders: { id: number; amount: number }[] }>();
+    expect(month.orders.find((o) => o.id === first)?.amount).toBe(60000);
+    expect(month.summary.total_amount).toBeGreaterThanOrEqual(120000);
   });
+
+  it('삭제는 관리자만 하고, 같은 지시서가 공유하는 도면은 마지막 오더가 지워질 때 함께 지워진다', async () => {
+    const a = await (await post('/api/auth/login', { pin: '123456' })).json<{ token: string }>();
+    const staff = await (await post('/api/admin/users', { name: '삭제테스트' }, a.token)).json<{ pin: string }>();
+    const s = await (await post('/api/auth/login', { pin: staff.pin })).json<{ token: string }>();
+
+    const body = {
+      company: '삭제업체', kind: 'cut', drawing_html: '<html>d</html>',
+      items: [{ bar_name: 'NS88-A', length_mm: 1000, qty: 1, color: '화이트' }, { bar_name: 'NS88-A', length_mm: 1000, qty: 1, color: '블랙' }],
+    };
+    const r = await call('/api/ingest/blender', { method: 'POST', body: JSON.stringify(body), headers: { 'X-API-Key': 'test-key' } });
+    const { ids } = await r.json<{ ids: number[] }>();
+    expect(ids).toHaveLength(2);
+
+    const del = (id: number, token: string) => call(`/api/orders/${id}`, { method: 'DELETE', token });
+    expect((await del(ids[0], s.token)).status).toBe(403); // 직원은 삭제 불가
+    expect((await del(ids[0], a.token)).status).toBe(200);
+    // 아직 남은 오더가 도면을 쓰고 있으므로 도면은 유지된다
+    const link = await (await call(`/api/orders/${ids[1]}/drawing-link`, { token: a.token })).json<{ path: string }>();
+    expect((await call(link.path)).status).toBe(200);
+    expect((await del(ids[1], a.token)).status).toBe(200);
+    expect((await call(`/api/orders/${ids[1]}`, { token: a.token })).status).toBe(404);
+  });
+
   it('Blender 전송은 API 키가 필요하다', async () => {
     const body = { company: '테스트', kind: 'cut', items: [{ bar_name: 'x', length_mm: 100, qty: 1, color: '블랙' }] };
     expect((await post('/api/ingest/blender', body)).status).toBe(401);

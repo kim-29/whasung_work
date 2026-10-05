@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { anyUser, frontOnly } from './auth';
+import { adminOnly, anyUser, frontOnly } from './auth';
 import { hmacHex, timingSafeEqual } from './crypto';
 import { getDrawing, putDrawing } from './drawings-store';
 import { notify } from './hub';
-import { MAKE_ONE_COLOR, audit, checkMakeOneColor, createOrder, orderBaseSchema, replaceItems } from './orders-service';
+import { MAKE_ONE_COLOR, PRICE_SQL, audit, checkMakeOneColor, createOrder, orderBaseSchema, replaceItems } from './orders-service';
 import type { AppEnv } from './types';
 
 export const orders = new Hono<AppEnv>();
@@ -52,7 +52,38 @@ orders.get('/:id', anyUser, async (c) => {
   )
     .bind(id)
     .all();
-  return c.json({ ...order, items });
+  if (c.get('user').role === 'workshop') return c.json({ ...order, items }); // 작업장에는 금액을 보여주지 않는다
+  // 금액은 저장하지 않고, 지시일 기준 단가로 계산해서 내려준다
+  const priced = await c.env.DB.prepare(
+    `SELECT ${PRICE_SQL} AS price_per_kg FROM orders o WHERE o.id = ?1`,
+  )
+    .bind(id)
+    .first<{ price_per_kg: number | null }>();
+  const price = priced?.price_per_kg ?? null;
+  const amount = price != null && order.actual_weight != null ? Math.round(order.actual_weight * price) : null;
+  return c.json({ ...order, items, price_per_kg: price, amount });
+});
+
+// 삭제(관리자 전용). 같은 지시서가 도면을 공유하므로 마지막 오더가 지워질 때만 도면 파일도 지운다.
+orders.delete('/:id', adminOnly, async (c) => {
+  const id = Number(c.req.param('id'));
+  const order = await getOrder(c, id);
+  if (!order) return c.json({ error: '오더를 찾을 수 없습니다.' }, 404);
+  await c.env.DB.prepare(`DELETE FROM work_list WHERE order_id = ?1`).bind(id).run();
+  await c.env.DB.prepare(`DELETE FROM orders WHERE id = ?1`).bind(id).run();
+  if (order.drawing_key) {
+    const shared = await c.env.DB.prepare(`SELECT 1 AS x FROM orders WHERE drawing_key = ?1`).bind(order.drawing_key).first();
+    if (!shared) await c.env.KV.delete(order.drawing_key);
+  }
+  const user = c.get('user');
+  await audit(c.env, user.name, 'delete', id, {
+    company: order.company, status: order.status, actual_weight: order.actual_weight,
+  });
+  await notify(c.env, {
+    type: 'order_updated', orderId: id, company: order.company,
+    message: `작업 삭제: ${order.company}`, roles: ['admin', 'staff'],
+  });
+  return c.json({ ok: true });
 });
 
 // 작업지시서 전송 (직접 접수). manual_weight가 있으면 작업장 수기 건으로 바로 미납 처리
@@ -103,7 +134,11 @@ orders.patch('/:id', frontOnly, async (c) => {
     .run();
   if (items) await replaceItems(c.env, id, items);
   const user = c.get('user');
-  await audit(c.env, user.name, 'update', id, body.data);
+  // 무게를 고친 경우 수정 전 무게도 이력에 남긴다
+  await audit(c.env, user.name, 'update', id, {
+    ...body.data,
+    ...(actual_weight !== undefined ? { previous_weight: order.actual_weight } : {}),
+  });
   await notify(c.env, {
     type: 'order_updated', orderId: id, company: company ?? order.company,
     message: `작업지시 수정: ${company ?? order.company}`,

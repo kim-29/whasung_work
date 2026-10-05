@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { API_BASE, api, fmtDate, fmtKg } from '../api';
+import { API_BASE, api, fmtDate, fmtKg, fmtWon } from '../api';
 import { KIND_LABEL, STATUS_LABEL, type OrderDetail } from '../types';
 import { Badge, Button, Modal, useToast } from '../ui';
 import OrderForm from './OrderForm';
@@ -17,46 +17,44 @@ export async function openDrawing(orderId: number) {
   }
 }
 
-/** 오더 세부내역 보기 + (프론트) 납입 전 수정 */
+/** 오더 세부내역 (프론트는 금액 포함) 보기 + (프론트) 납입 전 수정. 수정 화면에서 실제 무게도 고칠 수 있다. */
 export default function OrderDetailModal({
   id,
   canEdit,
+  startEditing,
   onClose,
 }: {
   id: number;
   canEdit: boolean;
+  startEditing?: boolean;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const [editing, setEditing] = useState(false);
-  const [weight, setWeight] = useState('');
-  const q = useQuery({ queryKey: ['order', id], queryFn: () => api<OrderDetail>(`/orders/${id}`) });
+  const [editing, setEditing] = useState(!!startEditing);
+  const q = useQuery({
+    queryKey: ['order', id],
+    queryFn: () => api<OrderDetail & { price_per_kg?: number | null; amount?: number | null }>(`/orders/${id}`),
+  });
   const o = q.data;
-
-  const saveWeight = async () => {
-    try {
-      await api(`/orders/${id}`, { method: 'PATCH', body: { actual_weight: Number(weight) } });
-      qc.invalidateQueries();
-      toast('무게를 수정했습니다.');
-      setWeight('');
-    } catch (e) {
-      toast((e as Error).message, 'error');
-    }
-  };
+  const hasWeight = o?.actual_weight != null;
 
   return (
-    <Modal title="작업 세부내역" onClose={onClose}>
+    <Modal title={editing ? '내용 수정' : '작업 세부내역'} onClose={onClose}>
       {!o ? (
-        <p className="text-lg">불러오는 중...</p>
+        <p className="text-base">불러오는 중...</p>
       ) : editing ? (
         <OrderForm
           initial={{ company: o.company, kind: o.kind, request_note: o.request_note ?? '', items: o.items }}
+          weightInfo={hasWeight ? { actual: o.actual_weight!, pricePerKg: o.price_per_kg ?? null } : undefined}
           submitLabel="수정 저장"
           onSubmit={async (v) => {
-            await api(`/orders/${id}`, { method: 'PATCH', body: { company: v.company, kind: v.kind, request_note: v.request_note, items: v.items } });
+            await api(`/orders/${id}`, {
+              method: 'PATCH',
+              body: { company: v.company, kind: v.kind, request_note: v.request_note, items: v.items, actual_weight: v.actual_weight },
+            });
             qc.invalidateQueries();
-            toast('수정했습니다.');
+            toast(v.actual_weight ? `수정했습니다. 무게 ${fmtKg(o.actual_weight)} → ${fmtKg(v.actual_weight)}` : '수정했습니다.');
             setEditing(false);
           }}
         />
@@ -69,8 +67,24 @@ export default function OrderDetailModal({
             <Badge color={o.status === 'paid' ? 'green' : o.status === 'unpaid' ? 'red' : 'amber'}>{STATUS_LABEL[o.status]}</Badge>
             {o.has_unknown_bar ? <Badge color="red">미등록 바 포함</Badge> : null}
           </div>
-          <p>지시일 {fmtDate(o.created_at, true)} · 완료일 {fmtDate(o.completed_at, true)}</p>
-          <p>예상 무게 {fmtKg(o.theory_weight)} / 실제 무게 <b>{fmtKg(o.actual_weight)}</b></p>
+          <p>
+            지시일 {fmtDate(o.created_at, true)} · 완료일 {fmtDate(o.completed_at, true)}
+            {o.paid_at && <> · 납입일 {fmtDate(o.paid_at, true)}</>}
+          </p>
+          <div className="rounded-xl border border-slate-300 bg-slate-50 p-3">
+            <p>예상무게 {fmtKg(o.theory_weight)}</p>
+            {hasWeight && (
+              <>
+                <p>실제무게 <b>{fmtKg(o.actual_weight)}</b></p>
+                {o.price_per_kg !== undefined && (
+                  <p className="text-lg font-bold">
+                    금액 {o.amount == null ? <span className="text-red-600">단가 미설정</span> : fmtWon(o.amount)}
+                    {o.price_per_kg != null && <span className="ml-2 text-sm font-normal text-slate-500">({o.price_per_kg.toLocaleString('ko-KR')}원/kg)</span>}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
           {o.request_note && <p><b>별도 요구사항</b><br />{o.request_note}</p>}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-base">
@@ -86,15 +100,6 @@ export default function OrderDetailModal({
             {o.has_drawing ? <Button onClick={() => openDrawing(id).catch((e) => toast(e.message, 'error'))}>도면 보기</Button> : null}
             {canEdit && o.status !== 'paid' && <Button tone="plain" onClick={() => setEditing(true)}>내용 수정</Button>}
           </div>
-          {canEdit && o.status !== 'paid' && o.status !== 'pending' && (
-            <div className="flex items-end gap-2 rounded-xl bg-slate-100 p-3">
-              <div className="flex-1">
-                <span className="mb-1 block text-sm font-bold text-slate-600">무게 잘못 입력했나요? 바르게 고치기(kg)</span>
-                <input inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value)} />
-              </div>
-              <Button disabled={!(Number(weight) > 0)} onClick={saveWeight}>무게 수정</Button>
-            </div>
-          )}
         </div>
       )}
     </Modal>

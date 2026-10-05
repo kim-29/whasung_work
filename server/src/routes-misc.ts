@@ -112,15 +112,17 @@ dashboard.get('/monthly', async (c) => {
   const month = c.req.query('month') ?? new Date().toISOString().slice(0, 7);
   if (!/^\d{4}-\d{2}$/.test(month)) return c.json({ error: '월 형식이 올바르지 않습니다.' }, 400);
   const { results } = await c.env.DB.prepare(
-    `SELECT id, company, kind, color, status, actual_weight, created_at AS ordered_at, completed_at, paid_at
-       FROM orders WHERE strftime('%Y-%m', created_at) = ?1 ORDER BY id DESC`,
+    `SELECT o.id, o.company, o.kind, o.color, o.status, o.actual_weight, o.created_at AS ordered_at,
+            o.completed_at, o.paid_at, ROUND(o.actual_weight * ${PRICE_SQL}) AS amount
+       FROM orders o WHERE strftime('%Y-%m', o.created_at) = ?1 ORDER BY o.id DESC`,
   )
     .bind(month)
     .all();
   const summary = await c.env.DB.prepare(
-    `SELECT COUNT(*) AS count, COALESCE(SUM(actual_weight),0) AS total_weight,
-            SUM(status = 'paid') AS paid_count, SUM(status = 'unpaid') AS unpaid_count
-       FROM orders WHERE strftime('%Y-%m', created_at) = ?1`,
+    `SELECT COUNT(*) AS count, COALESCE(SUM(o.actual_weight),0) AS total_weight,
+            COALESCE(SUM(ROUND(o.actual_weight * ${PRICE_SQL})),0) AS total_amount,
+            SUM(o.status = 'paid') AS paid_count, SUM(o.status = 'unpaid') AS unpaid_count
+       FROM orders o WHERE strftime('%Y-%m', o.created_at) = ?1`,
   )
     .bind(month)
     .first();
