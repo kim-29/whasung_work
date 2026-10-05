@@ -5,7 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 # 프론트(GitHub Pages) 주소. 배포 후 실제 주소로 교체 (쉼표로 여러 개 가능)
-ALLOWED_ORIGINS = "http://localhost:5173"
+ALLOWED_ORIGINS = "https://kim-29.github.io,http://localhost:5173"
 
 [[d1_databases]]
 binding = "DB"
