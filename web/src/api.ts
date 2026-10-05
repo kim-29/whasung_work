@@ -58,3 +58,6 @@ export function fmtDate(s: string | null | undefined, withTime = false): string 
 
 export const fmtKg = (n: number | null | undefined) =>
   n == null ? '-' : `${Number(n).toLocaleString('ko-KR', { maximumFractionDigits: 2 })}kg`;
+
+export const fmtWon = (n: number | null | undefined) =>
+  n == null ? '단가 미설정' : `${Math.round(n).toLocaleString('ko-KR')}원`;

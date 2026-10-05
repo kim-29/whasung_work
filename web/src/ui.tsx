@@ -4,7 +4,7 @@ const tones = {
   primary: 'bg-blue-600 text-white active:bg-blue-700',
   success: 'bg-emerald-600 text-white active:bg-emerald-700',
   danger: 'bg-red-600 text-white active:bg-red-700',
-  plain: 'bg-white text-slate-800 border-2 border-slate-300 active:bg-slate-100',
+  plain: 'bg-white text-slate-800 border border-slate-400 active:bg-slate-200',
 } as const;
 
 export function Button({
@@ -15,19 +15,25 @@ export function Button({
   return (
     <button
       {...p}
-      className={`min-h-12 rounded-xl px-5 text-base font-bold disabled:opacity-50 ${tones[tone]} ${className}`}
+      className={`min-h-11 rounded-xl px-4 text-base font-semibold disabled:opacity-40 ${tones[tone]} ${className}`}
     />
   );
 }
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-2xl bg-white p-4 shadow-sm ${className}`}>{children}</div>;
+  return <div className={`rounded-2xl border border-slate-300 bg-white p-4 ${className}`}>{children}</div>;
 }
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
+/** 제목과 입력칸을 한 줄에 나란히 놓는다(inline). 기본은 제목이 위. */
+export function Field({ label, children, inline }: { label: string; children: ReactNode; inline?: boolean }) {
+  return inline ? (
+    <label className="flex items-center gap-3">
+      <span className="w-24 shrink-0 text-sm font-semibold text-slate-600">{label}</span>
+      <span className="min-w-0 flex-1">{children}</span>
+    </label>
+  ) : (
     <label className="block">
-      <span className="mb-1 block text-sm font-bold text-slate-600">{label}</span>
+      <span className="mb-1 block text-sm font-semibold text-slate-600">{label}</span>
       {children}
     </label>
   );
@@ -36,23 +42,23 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 export function Badge({ children, color = 'slate' }: { children: ReactNode; color?: 'slate' | 'blue' | 'amber' | 'red' | 'green' }) {
   const c = {
     slate: 'bg-slate-200 text-slate-700',
-    blue: 'bg-blue-100 text-blue-800',
+    blue: 'bg-blue-600 text-white',
     amber: 'bg-amber-100 text-amber-800',
-    red: 'bg-red-100 text-red-800',
+    red: 'bg-red-600 text-white',
     green: 'bg-emerald-100 text-emerald-800',
   }[color];
-  return <span className={`inline-block rounded-full px-3 py-1 text-sm font-bold ${c}`}>{children}</span>;
+  return <span className={`inline-block rounded-xl px-2.5 py-0.5 text-sm font-semibold ${c}`}>{children}</span>;
 }
 
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50 sm:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 sm:items-center" onClick={onClose}>
       <div
-        className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl"
+        className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-t-2xl bg-white p-5 sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold">{title}</h2>
+        <div className="mb-4 flex items-center justify-between border-b border-slate-300 pb-3">
+          <h2 className="text-lg font-bold">{title}</h2>
           <Button tone="plain" onClick={onClose}>
             닫기
           </Button>
@@ -77,12 +83,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="no-print pointer-events-none fixed inset-x-0 top-3 z-50 flex flex-col items-center gap-2 px-3">
+      <div className="no-print pointer-events-none fixed inset-x-0 top-14 z-50 flex flex-col items-center gap-2 px-3">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`pointer-events-auto w-full max-w-md rounded-2xl px-5 py-4 text-lg font-bold text-white shadow-lg ${
-              t.kind === 'ok' ? 'bg-emerald-600' : 'bg-red-600'
+            className={`pointer-events-auto w-full max-w-md rounded-xl border px-4 py-3 text-base font-semibold text-white shadow-lg ${
+              t.kind === 'ok' ? 'border-black bg-slate-900' : 'border-red-800 bg-red-600'
             }`}
           >
             {t.msg}

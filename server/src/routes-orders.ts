@@ -4,7 +4,7 @@ import { anyUser, frontOnly } from './auth';
 import { hmacHex, timingSafeEqual } from './crypto';
 import { getDrawing, putDrawing } from './drawings-store';
 import { notify } from './hub';
-import { audit, createOrder, orderInputSchema, replaceItems } from './orders-service';
+import { MAKE_ONE_COLOR, audit, checkMakeOneColor, createOrder, orderBaseSchema, replaceItems } from './orders-service';
 import type { AppEnv } from './types';
 
 export const orders = new Hono<AppEnv>();
@@ -32,7 +32,7 @@ orders.get('/', anyUser, async (c) => {
     where.push(`status = ?${args.push(q.status)}`);
   }
   if (q.company) where.push(`company LIKE ?${args.push(`%${q.company}%`)}`);
-  const sql = `SELECT id, company, kind, status, source, has_unknown_bar, theory_weight, actual_weight,
+  const sql = `SELECT id, company, kind, status, source, color, group_id, has_unknown_bar, theory_weight, actual_weight,
                       drawing_key IS NOT NULL AS has_drawing, created_at, completed_at, paid_at
                  FROM orders ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
                 ORDER BY id DESC LIMIT 200`;
@@ -57,8 +57,9 @@ orders.get('/:id', anyUser, async (c) => {
 
 // 작업지시서 전송 (직접 접수). manual_weight가 있으면 작업장 수기 건으로 바로 미납 처리
 orders.post('/', frontOnly, async (c) => {
-  const body = orderInputSchema
+  const body = orderBaseSchema
     .extend({ manual_weight: z.number().positive().max(100000).optional() })
+    .superRefine(checkMakeOneColor)
     .safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: body.error.issues[0].message }, 400);
   const { manual_weight, ...input } = body.data;
@@ -80,7 +81,7 @@ orders.post('/', frontOnly, async (c) => {
 // 납입 전 수정: 업체명/내용/요구사항/무게/절단서
 orders.patch('/:id', frontOnly, async (c) => {
   const id = Number(c.req.param('id'));
-  const body = orderInputSchema
+  const body = orderBaseSchema
     .partial()
     .extend({ actual_weight: z.number().positive().max(100000).optional() })
     .safeParse(await c.req.json().catch(() => null));
@@ -89,14 +90,16 @@ orders.patch('/:id', frontOnly, async (c) => {
   if (!order) return c.json({ error: '오더를 찾을 수 없습니다.' }, 404);
   if (order.status === 'paid') return c.json({ error: '완납된 오더는 수정할 수 없습니다.' }, 409);
 
-  const { items, company, content, request_note, actual_weight, kind } = body.data;
+  const { items, company, request_note, actual_weight, kind } = body.data;
+  // 오더 하나에는 색상 하나만 둘 수 있다 (색상이 다르면 새 작업지시서로 나눈다)
+  if (items && new Set(items.map((i) => i.color)).size > 1) return c.json({ error: MAKE_ONE_COLOR.replace('제작 작업은', '수정할 때는') }, 400);
   await c.env.DB.prepare(
-    `UPDATE orders SET company = COALESCE(?1, company), content = COALESCE(?2, content),
-            request_note = COALESCE(?3, request_note), actual_weight = COALESCE(?4, actual_weight),
-            kind = COALESCE(?5, kind)
-      WHERE id = ?6`,
+    `UPDATE orders SET company = COALESCE(?1, company),
+            request_note = COALESCE(?2, request_note), actual_weight = COALESCE(?3, actual_weight),
+            kind = COALESCE(?4, kind)
+      WHERE id = ?5`,
   )
-    .bind(company ?? null, content ?? null, request_note ?? null, actual_weight ?? null, kind ?? null, id)
+    .bind(company ?? null, request_note ?? null, actual_weight ?? null, kind ?? null, id)
     .run();
   if (items) await replaceItems(c.env, id, items);
   const user = c.get('user');

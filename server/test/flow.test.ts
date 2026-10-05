@@ -44,7 +44,7 @@ describe('PIN 로그인 · 주문 흐름', () => {
           company: '한빛샷시', kind: 'make',
           items: [
             { bar_name: 'NS88-A', length_mm: 2000, qty: 4, color: '화이트' },
-            { bar_name: '없는바', length_mm: 1000, qty: 1 },
+            { bar_name: '없는바', length_mm: 1000, qty: 1, color: '화이트' },
           ],
         },
         s.token,
@@ -80,8 +80,50 @@ describe('PIN 로그인 · 주문 흐름', () => {
     expect((await bad()).status).toBe(429);
   });
 
+  it('절단은 색상별로 나뉘고, 제작은 색상 하나만 받는다', async () => {
+    const a = await (await post('/api/auth/login', { pin: '123456' })).json<{ token: string }>();
+    const items = [
+      { bar_name: 'NS88-A', length_mm: 1000, qty: 2, color: '화이트' },
+      { bar_name: 'NS88-A', length_mm: 1000, qty: 1, color: '블랙' },
+      { bar_name: 'NS88-A', length_mm: 500, qty: 2, color: '화이트' },
+    ];
+    const cut = await (await post('/api/orders', { company: '분할업체', kind: 'cut', items }, a.token)).json<{ ids: number[]; orders: { color: string }[] }>();
+    expect(cut.ids).toHaveLength(2);
+    expect(cut.orders.map((o) => o.color).sort()).toEqual(['블랙', '화이트']);
+
+    const list = await (await call('/api/orders', { token: a.token })).json<{ id: number; group_id: number; color: string }[]>();
+    const mine = list.filter((o) => cut.ids.includes(o.id));
+    expect(new Set(mine.map((o) => o.group_id)).size).toBe(1); // 같은 지시서로 묶임
+
+    const make = await post('/api/orders', { company: '분할업체', kind: 'make', items }, a.token);
+    expect(make.status).toBe(400);
+    expect((await post('/api/orders', { company: 'x', kind: 'cut', items: [{ bar_name: 'NS88-A', length_mm: 1, qty: 1 }] }, a.token)).status).toBe(400); // 색상 필수
+  });
+
+  it('단가는 지시일 기준으로 적용되고 이후 변경은 이전 작업에 영향이 없다', async () => {
+    const a = await (await post('/api/auth/login', { pin: '123456' })).json<{ token: string }>();
+    const put = (price: number) => call('/api/prices', { method: 'PUT', body: JSON.stringify({ color: '헨켈', price_per_kg: price }), token: a.token });
+    expect((await put(5000)).status).toBe(200);
+
+    const mk = async (company: string) => {
+      const r = await (await post('/api/orders', { company, kind: 'cut', items: [{ bar_name: 'NS88-A', length_mm: 1000, qty: 1, color: '헨켈' }] }, a.token)).json<{ id: number }>();
+      await post(`/api/orders/${r.id}/weight`, { weight: 10 }, a.token);
+      return r.id;
+    };
+    const first = await mk('단가업체');
+    await new Promise((r) => setTimeout(r, 1100)); // effective_from 은 초 단위라 한 칸 띄운다
+    expect((await put(6000)).status).toBe(200);
+    const second = await mk('단가업체');
+
+    const unpaid = await (await call('/api/dashboard/unpaid', { token: a.token })).json<{ id: number; amount: number }[]>();
+    expect(unpaid.find((o) => o.id === first)?.amount).toBe(50000); // 10kg × 5,000
+    expect(unpaid.find((o) => o.id === second)?.amount).toBe(60000); // 10kg × 6,000
+
+    const byCompany = await (await call('/api/dashboard/by-company', { token: a.token })).json<{ company: string; total_amount: number }[]>();
+    expect(byCompany.find((c) => c.company === '단가업체')?.total_amount).toBe(110000);
+  });
   it('Blender 전송은 API 키가 필요하다', async () => {
-    const body = { company: '테스트', kind: 'cut', items: [{ bar_name: 'x', length_mm: 100, qty: 1 }] };
+    const body = { company: '테스트', kind: 'cut', items: [{ bar_name: 'x', length_mm: 100, qty: 1, color: '블랙' }] };
     expect((await post('/api/ingest/blender', body)).status).toBe(401);
     const ok = await call('/api/ingest/blender', {
       method: 'POST', body: JSON.stringify(body), headers: { 'X-API-Key': 'test-key' },
@@ -91,7 +133,7 @@ describe('PIN 로그인 · 주문 흐름', () => {
 
   it('Blender 도면(HTML)은 KV에 저장되고 서명 링크로만 열린다', async () => {
     const html = '<html><body>도면 테스트</body></html>';
-    const body = { company: '도면업체', kind: 'make', items: [{ bar_name: 'x', length_mm: 100, qty: 1 }], drawing_html: html };
+    const body = { company: '도면업체', kind: 'make', items: [{ bar_name: 'x', length_mm: 100, qty: 1, color: '실버' }], drawing_html: html };
     const r = await call('/api/ingest/blender', {
       method: 'POST', body: JSON.stringify(body), headers: { 'X-API-Key': 'test-key' },
     });

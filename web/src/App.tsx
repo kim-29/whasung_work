@@ -8,20 +8,27 @@ import WorkList from './pages/WorkList';
 import { useRealtime } from './realtime';
 
 const TABS = [
-  { to: '/', label: '대시보드', icon: '📊', front: true },
-  { to: '/new', label: '작업지시서', icon: '📝', front: true },
-  { to: '/work', label: '작업목록', icon: '🔧', front: false },
-  { to: '/settings', label: '설정', icon: '⚙️', front: true },
+  { to: '/', label: '대시보드' },
+  { to: '/new', label: '작업지시서' },
+  { to: '/work', label: '작업목록' },
+  { to: '/settings', label: '설정' },
 ];
+
+const ROLE_LABEL = { admin: '관리자', staff: '직원', workshop: '작업장' } as const;
 
 function Shell() {
   const { user } = useAuth();
   useRealtime();
   const isFront = user!.role !== 'workshop';
-  const tabs = TABS.filter((t) => isFront || !t.front);
 
   return (
-    <div className="mx-auto min-h-screen max-w-5xl pb-28">
+    <div className="mx-auto min-h-screen max-w-5xl bg-slate-100 pb-20 shadow-sm">
+      <header className="no-print sticky top-0 z-30 flex items-center justify-between bg-slate-900 px-4 py-3 text-white">
+        <span className="text-lg font-bold tracking-wide">화성 알루미늄</span>
+        <span className="text-sm text-slate-300">
+          {user!.name} · {ROLE_LABEL[user!.role]}
+        </span>
+      </header>
       <main className="p-3 sm:p-5">
         <Routes>
           {isFront && <Route path="/" element={<Dashboard />} />}
@@ -32,18 +39,19 @@ function Shell() {
         </Routes>
       </main>
       {isFront && (
-        <nav className="no-print fixed inset-x-0 bottom-0 z-30 border-t-2 border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]">
+        <nav className="no-print fixed inset-x-0 bottom-0 z-30 bg-slate-900 pb-[env(safe-area-inset-bottom)]">
           <div className="mx-auto grid max-w-5xl grid-cols-4">
-            {tabs.map((t) => (
+            {TABS.map((t) => (
               <NavLink
                 key={t.to}
                 to={t.to}
                 end
                 className={({ isActive }) =>
-                  `flex flex-col items-center gap-1 py-3 text-base font-bold ${isActive ? 'text-blue-600' : 'text-slate-500'}`
+                  `border-t-4 py-3.5 text-center text-base font-semibold ${
+                    isActive ? 'border-white bg-slate-800 text-white' : 'border-transparent text-slate-400'
+                  }`
                 }
               >
-                <span className="text-2xl">{t.icon}</span>
                 {t.label}
               </NavLink>
             ))}
@@ -56,7 +64,7 @@ function Shell() {
 
 export default function App() {
   const { user, loading } = useAuth();
-  if (loading) return <p className="p-10 text-center text-xl">불러오는 중...</p>;
+  if (loading) return <p className="p-10 text-center text-lg">불러오는 중...</p>;
   if (!user) return <Login />;
   return (
     <HashRouter>

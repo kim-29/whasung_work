@@ -4,7 +4,7 @@ import { anyUser, frontOnly } from './auth';
 import { timingSafeEqual } from './crypto';
 import { putDrawing } from './drawings-store';
 import { notify } from './hub';
-import { audit, createOrder, orderInputSchema } from './orders-service';
+import { COLORS, PRICE_SQL, audit, checkMakeOneColor, createOrder, orderBaseSchema } from './orders-service';
 import type { AppEnv } from './types';
 
 // ---------- bar_database ----------
@@ -62,6 +62,36 @@ bars.delete('/:id', frontOnly, async (c) => {
   return c.json({ ok: true });
 });
 
+// ---------- 색상별 단가 (kg당) ----------
+export const prices = new Hono<AppEnv>();
+prices.use('*', frontOnly);
+
+// 색상별 현재 단가와 마지막 변경일
+prices.get('/', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT color, price_per_kg, effective_from FROM color_prices p
+      WHERE id = (SELECT id FROM color_prices WHERE color = p.color ORDER BY effective_from DESC, id DESC LIMIT 1)`,
+  ).all<{ color: string; price_per_kg: number; effective_from: string }>();
+  const by = new Map(results.map((r) => [r.color, r]));
+  return c.json(COLORS.map((color) => by.get(color) ?? { color, price_per_kg: null, effective_from: null }));
+});
+
+// 단가 변경: 지금 이후에 지시되는 작업부터 새 단가가 적용된다. 처음 등록하는 단가는 기존 작업에도 적용한다.
+prices.put('/', async (c) => {
+  const body = z
+    .object({ color: z.enum(COLORS), price_per_kg: z.number().min(0).max(10_000_000) })
+    .safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: '색상과 단가(숫자)를 확인해 주세요.' }, 400);
+  const first = !(await c.env.DB.prepare(`SELECT 1 AS x FROM color_prices WHERE color = ?1`).bind(body.data.color).first());
+  await c.env.DB.prepare(
+    `INSERT INTO color_prices (color, price_per_kg, effective_from, changed_by)
+     VALUES (?1, ?2, CASE WHEN ?3 THEN '1970-01-01 00:00:00' ELSE datetime('now') END, ?4)`,
+  )
+    .bind(body.data.color, body.data.price_per_kg, first ? 1 : 0, c.get('user').name)
+    .run();
+  return c.json({ ok: true });
+});
+
 // ---------- 대시보드 ----------
 export const dashboard = new Hono<AppEnv>();
 dashboard.use('*', frontOnly);
@@ -69,9 +99,9 @@ dashboard.use('*', frontOnly);
 // 미납 거래내역
 dashboard.get('/unpaid', async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT o.id, o.company, o.kind, o.created_at AS ordered_at, o.completed_at, o.actual_weight,
-            o.has_unknown_bar, o.drawing_key IS NOT NULL AS has_drawing,
-            (SELECT group_concat(DISTINCT color) FROM work_list w WHERE w.order_id = o.id AND color <> '') AS colors
+    `SELECT o.id, o.company, o.kind, o.color, o.group_id, o.created_at AS ordered_at, o.completed_at,
+            o.actual_weight, o.has_unknown_bar, o.drawing_key IS NOT NULL AS has_drawing,
+            ROUND(o.actual_weight * ${PRICE_SQL}) AS amount
        FROM orders o WHERE o.status = 'unpaid' ORDER BY o.completed_at`,
   ).all();
   return c.json(results);
@@ -82,7 +112,7 @@ dashboard.get('/monthly', async (c) => {
   const month = c.req.query('month') ?? new Date().toISOString().slice(0, 7);
   if (!/^\d{4}-\d{2}$/.test(month)) return c.json({ error: '월 형식이 올바르지 않습니다.' }, 400);
   const { results } = await c.env.DB.prepare(
-    `SELECT id, company, kind, status, actual_weight, created_at AS ordered_at, completed_at, paid_at
+    `SELECT id, company, kind, color, status, actual_weight, created_at AS ordered_at, completed_at, paid_at
        FROM orders WHERE strftime('%Y-%m', created_at) = ?1 ORDER BY id DESC`,
   )
     .bind(month)
@@ -118,17 +148,19 @@ dashboard.get('/by-company', async (c) => {
   const company = c.req.query('company');
   if (company) {
     const { results } = await c.env.DB.prepare(
-      `SELECT id, kind, created_at AS ordered_at, completed_at, actual_weight,
-              (SELECT group_concat(DISTINCT color) FROM work_list w WHERE w.order_id = orders.id AND color <> '') AS colors
-         FROM orders WHERE status = 'unpaid' AND company = ?1 ORDER BY completed_at`,
+      `SELECT o.id, o.kind, o.color, o.created_at AS ordered_at, o.completed_at, o.actual_weight,
+              ROUND(o.actual_weight * ${PRICE_SQL}) AS amount
+         FROM orders o WHERE o.status = 'unpaid' AND o.company = ?1 ORDER BY o.completed_at`,
     )
       .bind(company)
       .all();
     return c.json(results);
   }
   const { results } = await c.env.DB.prepare(
-    `SELECT company, COUNT(*) AS count, COALESCE(SUM(actual_weight),0) AS total_weight
-       FROM orders WHERE status = 'unpaid' GROUP BY company ORDER BY company`,
+    `SELECT o.company, COUNT(*) AS count, COALESCE(SUM(o.actual_weight),0) AS total_weight,
+            COALESCE(SUM(ROUND(o.actual_weight * ${PRICE_SQL})),0) AS total_amount,
+            SUM(${PRICE_SQL} IS NULL) AS unpriced
+       FROM orders o WHERE o.status = 'unpaid' GROUP BY o.company ORDER BY o.company`,
   ).all();
   return c.json(results);
 });
@@ -141,8 +173,9 @@ ingest.post('/blender', async (c) => {
   if (!c.env.BLENDER_API_KEY || !timingSafeEqual(key, c.env.BLENDER_API_KEY)) {
     return c.json({ error: 'API 키가 올바르지 않습니다.' }, 401);
   }
-  const body = orderInputSchema
+  const body = orderBaseSchema
     .extend({ drawing_html: z.string().max(10_000_000).optional() })
+    .superRefine(checkMakeOneColor)
     .safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: body.error.issues[0].message }, 400);
 

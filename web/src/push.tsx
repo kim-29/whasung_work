@@ -55,7 +55,7 @@ export function PushCard() {
   };
 
   const msg: Record<string, string> = {
-    'need-install': '아이폰은 먼저 이 화면을 홈 화면에 추가해야 알림을 받을 수 있습니다. 사파리 아래의 공유 버튼(□↑) → "홈 화면에 추가"를 누른 뒤, 홈 화면의 앱 아이콘으로 다시 열어 주세요.',
+    'need-install': '아이폰은 먼저 이 화면을 홈 화면에 추가해야 알림을 받을 수 있습니다. 사파리 아래의 공유 버튼 → "홈 화면에 추가"를 누른 뒤, 홈 화면의 앱 아이콘으로 다시 열어 주세요.',
     unsupported: '이 기기(브라우저)는 알림을 지원하지 않습니다. 화면을 켜 둔 동안에만 알려 드립니다.',
     denied: '알림이 차단되어 있습니다. 브라우저 설정에서 이 사이트의 알림을 "허용"으로 바꿔 주세요.',
     'no-server-key': '서버에 알림 설정이 아직 되어 있지 않습니다. 관리자에게 문의해 주세요.',
@@ -63,20 +63,20 @@ export function PushCard() {
 
   if (state === 'checking') return null;
   return (
-    <Card className="space-y-3">
-      <h2 className="text-xl font-bold">🔔 알림 받기</h2>
+    <Card className="space-y-2">
+      <h2 className="text-base font-bold">알림 받기</h2>
       {state === 'on' ? (
         <>
-          <p className="text-lg text-emerald-700">이 기기는 알림이 켜져 있습니다.</p>
+          <p className="text-base text-emerald-700">이 기기는 알림이 켜져 있습니다.</p>
           <Button tone="plain" onClick={disable}>알림 끄기</Button>
         </>
       ) : state === 'off' ? (
         <>
-          <p className="text-base text-slate-600">새 작업이나 완료 소식을, 화면이 꺼져 있어도 알려 드립니다.</p>
+          <p className="text-sm text-slate-600">새 작업이나 완료 소식을, 화면이 꺼져 있어도 알려 드립니다.</p>
           <Button onClick={enable}>알림 켜기</Button>
         </>
       ) : (
-        <p className="text-base text-slate-700">{msg[state]}</p>
+        <p className="text-sm text-slate-700">{msg[state]}</p>
       )}
     </Card>
   );

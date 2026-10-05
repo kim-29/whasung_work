@@ -1,35 +1,71 @@
 @import 'tailwindcss';
 
-/* 처음 접한 분도 쓰기 쉽도록: 기본 글씨를 크게, 터치 영역을 넓게 */
+/* 블랙 + 실버 모노톤. 기존 클래스 이름(blue/emerald/amber/red)을 무채색 팔레트로 다시 정의한다. */
+@theme {
+  --color-blue-50: #eef0f2;
+  --color-blue-100: #dde1e5;
+  --color-blue-600: #16191d;
+  --color-blue-700: #000000;
+  --color-blue-800: #16191d;
+  --color-emerald-100: #e3e6e9;
+  --color-emerald-600: #3b4249;
+  --color-emerald-700: #2a2f35;
+  --color-emerald-800: #2a2f35;
+  --color-amber-50: #f1f2f4;
+  --color-amber-100: #d3d8dd;
+  --color-amber-800: #444b53;
+  --color-red-100: #efe2e2;
+  --color-red-600: #8b2b2b;
+  --color-red-700: #7a2323;
+  --color-red-800: #6b2020;
+  --color-slate-50: #f6f7f8;
+  --color-slate-100: #eceef0;
+  --color-slate-200: #dcdfe2;
+  --color-slate-300: #c3c8cd;
+  --color-slate-400: #9aa1a8;
+  --color-slate-500: #6f767d;
+  --color-slate-600: #51575d;
+  --color-slate-700: #3a3f44;
+  --color-slate-800: #24282c;
+  --color-slate-900: #101214;
+  --radius-xl: 0.25rem;
+  --radius-2xl: 0.375rem;
+  --radius-3xl: 0.375rem;
+}
+
 html {
-  font-size: 18px;
+  font-size: 17px;
 }
 body {
-  background: #f4f6f8;
-  color: #1b2430;
+  background: #e3e6e9;
+  color: #16191d;
+  font-family: 'Pretendard', 'Malgun Gothic', system-ui, sans-serif;
   -webkit-tap-highlight-color: transparent;
 }
+/* 입력칸: 각진 모서리, 진한 테두리 */
 input,
 select,
 textarea {
-  min-height: 3rem;
+  min-height: 2.75rem;
   width: 100%;
-  border: 2px solid #c5ced8;
-  border-radius: 0.75rem;
+  border: 1px solid #8c949c;
+  border-radius: 0.25rem;
   background: #fff;
-  padding: 0.5rem 0.75rem;
+  padding: 0.4rem 0.65rem;
   font-size: 1rem;
 }
 input:focus,
 select:focus,
 textarea:focus {
-  outline: none;
-  border-color: #1d6fdc;
+  outline: 2px solid #16191d;
+  outline-offset: 0;
+  border-color: #16191d;
 }
 input[type='checkbox'] {
-  width: 1.5rem;
-  min-height: 1.5rem;
-  height: 1.5rem;
+  width: 1.4rem;
+  min-height: 1.4rem;
+  height: 1.4rem;
+  accent-color: #16191d;
 }
 
 @media print {

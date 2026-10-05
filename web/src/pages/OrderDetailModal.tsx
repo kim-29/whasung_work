@@ -51,33 +51,33 @@ export default function OrderDetailModal({
         <p className="text-lg">불러오는 중...</p>
       ) : editing ? (
         <OrderForm
-          initial={{ company: o.company, kind: o.kind, content: o.content ?? '', request_note: o.request_note ?? '', items: o.items }}
+          initial={{ company: o.company, kind: o.kind, request_note: o.request_note ?? '', items: o.items }}
           submitLabel="수정 저장"
           onSubmit={async (v) => {
-            await api(`/orders/${id}`, { method: 'PATCH', body: { company: v.company, kind: v.kind, content: v.content, request_note: v.request_note, items: v.items } });
+            await api(`/orders/${id}`, { method: 'PATCH', body: { company: v.company, kind: v.kind, request_note: v.request_note, items: v.items } });
             qc.invalidateQueries();
             toast('수정했습니다.');
             setEditing(false);
           }}
         />
       ) : (
-        <div className="space-y-4 text-lg">
+        <div className="space-y-3 text-base">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-2xl font-bold">{o.company}</span>
+            <span className="text-xl font-bold">{o.company}</span>
             <Badge color="blue">{KIND_LABEL[o.kind]}</Badge>
+            {o.color && <Badge>{o.color}</Badge>}
             <Badge color={o.status === 'paid' ? 'green' : o.status === 'unpaid' ? 'red' : 'amber'}>{STATUS_LABEL[o.status]}</Badge>
             {o.has_unknown_bar ? <Badge color="red">미등록 바 포함</Badge> : null}
           </div>
           <p>지시일 {fmtDate(o.created_at, true)} · 완료일 {fmtDate(o.completed_at, true)}</p>
           <p>예상 무게 {fmtKg(o.theory_weight)} / 실제 무게 <b>{fmtKg(o.actual_weight)}</b></p>
-          {o.content && <p><b>작업 내용</b><br />{o.content}</p>}
           {o.request_note && <p><b>별도 요구사항</b><br />{o.request_note}</p>}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-base">
-              <thead><tr className="border-b-2"><th className="py-2">바 이름</th><th>길이(mm)</th><th>수량</th><th>색상</th></tr></thead>
+              <thead><tr className="border-b border-slate-400"><th className="py-2">바 이름</th><th>길이(mm)</th><th>수량</th><th>색상</th></tr></thead>
               <tbody>
                 {o.items.map((it) => (
-                  <tr key={it.id} className="border-b"><td className="py-2">{it.bar_name}</td><td>{it.length_mm}</td><td>{it.qty}</td><td>{it.color}</td></tr>
+                  <tr key={it.id} className="border-b border-slate-200"><td className="py-2">{it.bar_name}</td><td>{it.length_mm}</td><td>{it.qty}</td><td>{it.color}</td></tr>
                 ))}
               </tbody>
             </table>

@@ -2,6 +2,9 @@ export type Role = 'admin' | 'staff' | 'workshop';
 export type Status = 'pending' | 'making' | 'unpaid' | 'paid';
 export type Kind = 'cut' | 'make';
 
+export const COLORS = ['화이트', '블랙', '실버', '헨켈'] as const;
+export type Color = (typeof COLORS)[number];
+
 export interface User {
   id: number;
   name: string;
@@ -15,12 +18,20 @@ export interface Bar {
   note: string | null;
 }
 
+export interface ColorPrice {
+  color: Color;
+  price_per_kg: number | null;
+  effective_from: string | null;
+}
+
 export interface OrderSummary {
   id: number;
   company: string;
   kind: Kind;
   status: Status;
   source: 'front' | 'blender' | 'manual';
+  color: Color | null;
+  group_id: number | null;
   has_unknown_bar: number;
   theory_weight: number;
   actual_weight: number | null;
@@ -35,17 +46,16 @@ export interface OrderItem {
   bar_name: string;
   length_mm: number;
   qty: number;
-  color: string;
+  color: Color;
   theory_weight?: number;
 }
 
 export interface OrderDetail extends OrderSummary {
-  content: string;
   request_note: string;
   items: OrderItem[];
 }
 
-export const KIND_LABEL: Record<Kind, string> = { cut: '절단만', make: '제작(절단 포함)' };
+export const KIND_LABEL: Record<Kind, string> = { cut: '절단', make: '제작' };
 export const STATUS_LABEL: Record<Status, string> = {
   pending: '대기',
   making: '제작중',

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { admin, anyUser, auth, authenticateToken } from './auth';
 import { Hub } from './hub';
 import { drawings, orders } from './routes-orders';
-import { bars, dashboard, ingest } from './routes-misc';
+import { bars, dashboard, ingest, prices } from './routes-misc';
 import type { AppEnv } from './types';
 
 const app = new Hono<AppEnv>();
@@ -25,6 +25,7 @@ app.route('/api/admin', admin);
 app.route('/api/bars', bars);
 app.route('/api/orders', orders);
 app.route('/api/drawings', drawings);
+app.route('/api/prices', prices);
 app.route('/api/dashboard', dashboard);
 app.route('/api/ingest', ingest);
 

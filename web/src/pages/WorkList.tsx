@@ -3,17 +3,11 @@ import { useState } from 'react';
 import { api, fmtDate, fmtKg } from '../api';
 import { useAuth } from '../auth';
 import { PushCard } from '../push';
-import { KIND_LABEL, STATUS_LABEL, type OrderSummary, type Status } from '../types';
+import { KIND_LABEL, STATUS_LABEL, type OrderSummary } from '../types';
 import { Badge, Button, Card, Field, useToast } from '../ui';
 import OrderDetailModal, { openDrawing } from './OrderDetailModal';
 
-const FILTERS: { key: string; label: string; match: (s: Status) => boolean }[] = [
-  { key: 'active', label: '진행중', match: (s) => s === 'pending' || s === 'making' },
-  { key: 'unpaid', label: '미납', match: (s) => s === 'unpaid' },
-  { key: 'paid', label: '완납', match: (s) => s === 'paid' },
-];
-
-function OrderCard({ o, isFront, onDetail }: { o: OrderSummary; isFront: boolean; onDetail: () => void }) {
+function OrderCard({ o, siblings, isFront, onDetail }: { o: OrderSummary; siblings: number; isFront: boolean; onDetail: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
   const [weight, setWeight] = useState('');
@@ -34,7 +28,7 @@ function OrderCard({ o, isFront, onDetail }: { o: OrderSummary; isFront: boolean
 
   const w = Number(weight);
   const confirmWeight = () => {
-    const msg = `${o.company} 무게 ${w}kg 가 맞습니까?\n(예상 무게 ${fmtKg(o.theory_weight)})`;
+    const msg = `${o.company}${o.color ? ` (${o.color})` : ''} 무게 ${w}kg 가 맞습니까?\n(예상 무게 ${fmtKg(o.theory_weight)})`;
     if (!window.confirm(msg)) return;
     run(
       () => api(`/orders/${o.id}/weight`, { body: { weight: w } }),
@@ -42,25 +36,25 @@ function OrderCard({ o, isFront, onDetail }: { o: OrderSummary; isFront: boolean
     );
   };
 
-  const color = o.status === 'pending' ? 'amber' : o.status === 'making' ? 'blue' : o.status === 'unpaid' ? 'red' : 'green';
-
   return (
-    <Card className="space-y-3">
+    <Card className="space-y-2.5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-2xl font-bold">{o.company}</span>
-        <Badge color={color}>{STATUS_LABEL[o.status]}</Badge>
+        <span className="text-lg font-bold">{o.company}</span>
+        <Badge color={o.status === 'pending' ? 'amber' : 'blue'}>{STATUS_LABEL[o.status]}</Badge>
         <Badge>{KIND_LABEL[o.kind]}</Badge>
+        {o.color && <Badge color="slate">{o.color}</Badge>}
+        {siblings > 1 && <Badge color="slate">같은 지시서 {siblings}건</Badge>}
         {o.has_unknown_bar ? <Badge color="red">미등록 바</Badge> : null}
       </div>
-      <p className="text-base text-slate-600">
+      <p className="text-sm text-slate-600">
         지시 {fmtDate(o.created_at, true)} · 예상 {fmtKg(o.theory_weight)}
         {o.actual_weight != null && <> · 실제 <b>{fmtKg(o.actual_weight)}</b></>}
       </p>
 
       {o.status === 'pending' && (
-        <div className="flex items-end gap-2 rounded-xl bg-amber-50 p-3">
+        <div className="flex items-end gap-2 rounded-xl border border-slate-300 bg-slate-100 p-2.5">
           <div className="flex-1">
-            <Field label={o.kind === 'cut' ? '절단 후 무게(kg)' : '절단한 무게(kg)'}>
+            <Field label="절단한 무게(kg)">
               <input inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value.replace(/[^\d.]/g, ''))} placeholder="예) 12.5" />
             </Field>
           </div>
@@ -68,7 +62,7 @@ function OrderCard({ o, isFront, onDetail }: { o: OrderSummary; isFront: boolean
         </div>
       )}
       {o.status === 'making' && (
-        <Button tone="success" className="w-full !min-h-14 text-lg" disabled={busy}
+        <Button tone="success" className="w-full !min-h-12 text-base" disabled={busy}
           onClick={() => window.confirm('제작이 모두 끝났습니까?') && run(() => api(`/orders/${o.id}/complete`, { body: {} }), '제작 완료를 사무실에 알렸습니다.')}>
           제작 완료
         </Button>
@@ -85,31 +79,24 @@ function OrderCard({ o, isFront, onDetail }: { o: OrderSummary; isFront: boolean
 export default function WorkList() {
   const { user } = useAuth();
   const isFront = user!.role !== 'workshop';
-  const [filter, setFilter] = useState('active');
   const [detail, setDetail] = useState<number | null>(null);
   const q = useQuery({ queryKey: ['orders'], queryFn: () => api<OrderSummary[]>('/orders'), refetchInterval: 30_000 });
-  const f = FILTERS.find((x) => x.key === filter)!;
-  const list = (q.data ?? []).filter((o) => (isFront ? f.match(o.status) : true));
+  // 진행 중(대기, 제작중)인 작업만 보여준다. 미납·완납은 대시보드에서 확인한다.
+  const list = (q.data ?? []).filter((o) => o.status === 'pending' || o.status === 'making');
+  const groupSize = new Map<number, number>();
+  list.forEach((o) => o.group_id && groupSize.set(o.group_id, (groupSize.get(o.group_id) ?? 0) + 1));
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">작업목록</h1>
+    <div className="space-y-3">
+      <h1 className="text-xl font-bold">작업목록 <span className="text-base font-normal text-slate-500">진행 중 {list.length}건</span></h1>
       {!isFront && <PushCard />}
-      {isFront && (
-        <div className="flex gap-2">
-          {FILTERS.map((x) => (
-            <button key={x.key} onClick={() => setFilter(x.key)}
-              className={`min-h-12 flex-1 rounded-xl text-lg font-bold ${filter === x.key ? 'bg-blue-600 text-white' : 'bg-white'}`}>
-              {x.label}
-            </button>
-          ))}
-        </div>
-      )}
-      {q.isLoading && <p className="text-lg">불러오는 중...</p>}
-      {q.isError && <p className="rounded-xl bg-red-100 p-4 text-lg font-bold text-red-700">{(q.error as Error).message}</p>}
-      {!q.isLoading && list.length === 0 && <p className="py-10 text-center text-xl text-slate-500">해당하는 작업이 없습니다.</p>}
-      <div className="space-y-3">
-        {list.map((o) => <OrderCard key={o.id} o={o} isFront={isFront} onDetail={() => setDetail(o.id)} />)}
+      {q.isLoading && <p className="text-base">불러오는 중...</p>}
+      {q.isError && <p className="rounded-xl border border-red-800 bg-red-100 p-3 text-base font-semibold text-red-700">{(q.error as Error).message}</p>}
+      {!q.isLoading && list.length === 0 && <p className="py-10 text-center text-lg text-slate-500">진행 중인 작업이 없습니다.</p>}
+      <div className="space-y-2.5">
+        {list.map((o) => (
+          <OrderCard key={o.id} o={o} siblings={o.group_id ? groupSize.get(o.group_id) ?? 1 : 1} isFront={isFront} onDetail={() => setDetail(o.id)} />
+        ))}
       </div>
       {detail !== null && <OrderDetailModal id={detail} canEdit={isFront} onClose={() => setDetail(null)} />}
     </div>
