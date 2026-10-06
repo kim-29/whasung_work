@@ -1,12 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, tokenStore } from './api';
-import type { User } from './types';
+import type { MailService, User } from './types';
 
 interface AuthState {
   user: User | null;
   loading: boolean;
   login: (pin: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** 내 메일 서비스·주소 저장 (거래 내용을 보낼 때 열 메일 서비스) */
+  saveMail: (mail_service: MailService | null, mail_address: string) => Promise<void>;
 }
 
 const Ctx = createContext<AuthState>(null!);
@@ -43,5 +45,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  return <Ctx.Provider value={{ user, loading, login, logout }}>{children}</Ctx.Provider>;
+  const saveMail = useCallback(async (mail_service: MailService | null, mail_address: string) => {
+    const r = await api<{ mail_service: MailService | null; mail_address: string | null }>('/auth/mail', {
+      method: 'PUT',
+      body: { mail_service, mail_address },
+    });
+    setUser((u) => (u ? { ...u, mail_service: r.mail_service, mail_address: r.mail_address } : u));
+  }, []);
+
+  return <Ctx.Provider value={{ user, loading, login, logout, saveMail }}>{children}</Ctx.Provider>;
 }

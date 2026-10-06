@@ -63,10 +63,10 @@ auth.post('/login', async (c) => {
 
   const pinHash = await hmacHex(c.env.PIN_PEPPER, pin);
   let user = await c.env.DB.prepare(
-    `SELECT id, name, role FROM users WHERE pin_hash = ?1 AND active = 1`,
+    `SELECT id, name, role, mail_service, mail_address FROM users WHERE pin_hash = ?1 AND active = 1`,
   )
     .bind(pinHash)
-    .first<{ id: number; name: string; role: Role }>();
+    .first<{ id: number; name: string; role: Role; mail_service: string | null; mail_address: string | null }>();
 
   // 최초 설치: 관리자가 아직 없고 서버 비밀값(ADMIN_PIN)과 일치하면 관리자 생성
   if (!user && c.env.ADMIN_PIN && timingSafeEqual(pin, c.env.ADMIN_PIN)) {
@@ -77,7 +77,7 @@ auth.post('/login', async (c) => {
       )
         .bind(pinHash)
         .run();
-      user = { id: r.meta.last_row_id, name: '관리자', role: 'admin' };
+      user = { id: r.meta.last_row_id, name: '관리자', role: 'admin', mail_service: null, mail_address: null };
     }
   }
 
@@ -99,12 +99,40 @@ auth.post('/login', async (c) => {
   await c.env.DB.prepare(`INSERT INTO devices (user_id, token_hash, label) VALUES (?1, ?2, ?3)`)
     .bind(user.id, await sha256Hex(token), label ?? null)
     .run();
-  return c.json({ token, user: { id: user.id, name: user.name, role: user.role } });
+  return c.json({
+    token,
+    user: { id: user.id, name: user.name, role: user.role, mail_service: user.mail_service, mail_address: user.mail_address },
+  });
 });
 
-auth.get('/me', anyUser, (c) => {
+auth.get('/me', anyUser, async (c) => {
   const { id, name, role } = c.get('user');
-  return c.json({ id, name, role });
+  const m = await c.env.DB.prepare(`SELECT mail_service, mail_address FROM users WHERE id = ?1`)
+    .bind(id)
+    .first<{ mail_service: string | null; mail_address: string | null }>();
+  return c.json({ id, name, role, mail_service: m?.mail_service ?? null, mail_address: m?.mail_address ?? null });
+});
+
+// 내 메일 설정: 거래 내용을 메일로 보낼 때 열 메일 서비스와 내 메일 주소(선택)
+export const MAIL_SERVICES = ['gmail', 'outlook', 'naver', 'daum', 'app'] as const;
+const mailSchema = z.object({
+  mail_service: z.enum(MAIL_SERVICES, { errorMap: () => ({ message: '메일 서비스를 골라 주세요.' }) }).nullable(),
+  mail_address: z
+    .string()
+    .trim()
+    .max(120)
+    .refine((v) => v === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), '이메일 주소 형식이 올바르지 않습니다.')
+    .optional()
+    .default(''),
+});
+
+auth.put('/mail', frontOnly, async (c) => {
+  const body = mailSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: body.error.issues[0].message }, 400);
+  await c.env.DB.prepare(`UPDATE users SET mail_service = ?1, mail_address = ?2 WHERE id = ?3`)
+    .bind(body.data.mail_service, body.data.mail_address || null, c.get('user').id)
+    .run();
+  return c.json({ mail_service: body.data.mail_service, mail_address: body.data.mail_address || null });
 });
 
 auth.post('/logout', anyUser, async (c) => {
@@ -129,9 +157,20 @@ async function issuePin(env: Env): Promise<{ pin: string; hash: string }> {
 
 admin.get('/users', async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT id, name, role, active, created_at FROM users ORDER BY role, id`,
+    `SELECT id, name, role, active, created_at, mail_service, mail_address FROM users ORDER BY role, id`,
   ).all();
   return c.json(results);
+});
+
+// 관리자가 직원의 메일 서비스·주소를 대신 입력
+admin.put('/users/:id/mail', async (c) => {
+  const body = mailSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: body.error.issues[0].message }, 400);
+  const r = await c.env.DB.prepare(`UPDATE users SET mail_service = ?1, mail_address = ?2 WHERE id = ?3 AND role != 'workshop'`)
+    .bind(body.data.mail_service, body.data.mail_address || null, Number(c.req.param('id')))
+    .run();
+  if (!r.meta.changes) return c.json({ error: '직원을 찾을 수 없습니다.' }, 404);
+  return c.json({ ok: true });
 });
 
 admin.post('/users', async (c) => {

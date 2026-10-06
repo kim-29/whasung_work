@@ -5,7 +5,7 @@ import { api, fmtDate } from '../api';
 import { useAuth } from '../auth';
 import { PushCard } from '../push';
 import { ArchiveCard } from './Archive';
-import { COLORS, type Bar, type ColorPrice, type Company } from '../types';
+import { COLORS, MAIL_SERVICES, type Bar, type ColorPrice, type Company, type MailService } from '../types';
 import { Badge, Button, Card, Field, Modal, useToast } from '../ui';
 
 export default function Settings() {
@@ -19,6 +19,7 @@ export default function Settings() {
         {user!.role === 'admin' && <MenuLink to="/settings/staff" title="직원/등록기기 관리" sub="직원 PIN, 작업장 PIN, 로그인된 기기 (관리자 전용)" />}
       </Card>
       <PushCard />
+      <MyMail />
       <Prices />
       <Card className="flex items-center justify-between">
         <span className="text-base">{user!.name}님으로 로그인됨</span>
@@ -245,7 +246,60 @@ function Bars() {
   );
 }
 
-interface UserRow { id: number; name: string; role: string; active: number }
+interface UserRow { id: number; name: string; role: string; active: number; mail_service: MailService | null; mail_address: string | null }
+const mailLabel = (u: { mail_service?: MailService | null; mail_address?: string | null }) =>
+  u.mail_service ? `${MAIL_SERVICES.find((m) => m.key === u.mail_service)?.label}${u.mail_address ? ` · ${u.mail_address}` : ''}` : '메일 서비스 미설정';
+
+/** 메일 서비스 고르기 + 내 메일 주소 입력 (내 메일 카드, 관리자의 직원 메일 입력에서 함께 쓴다) */
+function MailFields({ service, address, onService, onAddress }: { service: MailService | ''; address: string; onService: (s: MailService) => void; onAddress: (a: string) => void }) {
+  return (
+    <div className="space-y-2.5">
+      <div className="space-y-1.5">
+        {MAIL_SERVICES.map((m) => (
+          <button key={m.key} type="button" onClick={() => onService(m.key)} aria-pressed={service === m.key}
+            className={`block w-full rounded-xl border px-3 py-2.5 text-left ${service === m.key ? 'border-black bg-slate-900 text-white' : 'border-slate-400 bg-white'}`}>
+            <span className="block text-base font-bold">{m.label}</span>
+            <span className={`block text-sm ${service === m.key ? 'text-slate-300' : 'text-slate-500'}`}>{m.hint}</span>
+          </button>
+        ))}
+      </div>
+      <Field label="메일 주소 (선택 · Gmail 계정 구분에 쓰입니다)">
+        <input type="email" inputMode="email" value={address} placeholder="예) me@gmail.com" onChange={(e) => onAddress(e.target.value)} />
+      </Field>
+    </div>
+  );
+}
+
+/** 내 메일: 거래 내용을 메일로 보낼 때 열 메일 서비스. 직원마다 따로 저장된다. */
+function MyMail() {
+  const { user, saveMail } = useAuth();
+  const toast = useToast();
+  const [service, setService] = useState<MailService | ''>(user?.mail_service ?? '');
+  const [addr, setAddr] = useState(user?.mail_address ?? '');
+  const [busy, setBusy] = useState(false);
+  const changed = service !== (user?.mail_service ?? '') || addr.trim() !== (user?.mail_address ?? '');
+  const save = async () => {
+    setBusy(true);
+    try {
+      await saveMail(service || null, addr.trim());
+      toast('내 메일을 저장했습니다.');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card className="space-y-2.5">
+      <h2 className="text-base font-bold">내 메일</h2>
+      <p className="text-sm text-slate-500">
+        거래내역의 "이메일로 내용 전송" 버튼을 누르면 여기서 고른 메일의 작성 페이지가 열리고, 받는 사람·제목·내용이 채워집니다. 확인하고 "보내기"만 누르면 됩니다. 보낸 메일은 내 메일함에 남습니다.
+      </p>
+      <MailFields service={service} address={addr} onService={setService} onAddress={setAddr} />
+      <Button className="w-full" disabled={busy || !changed || !service} onClick={save}>저장</Button>
+    </Card>
+  );
+}
 interface DeviceRow { id: number; user_name: string; role: string; label: string | null; last_used_at: string }
 
 function AdminPanel() {
@@ -253,6 +307,7 @@ function AdminPanel() {
   const toast = useToast();
   const [name, setName] = useState('');
   const [issued, setIssued] = useState<{ title: string; pin: string } | null>(null);
+  const [mailEdit, setMailEdit] = useState<{ id: number; name: string; service: MailService | ''; address: string } | null>(null);
   const users = useQuery({ queryKey: ['admin-users'], queryFn: () => api<UserRow[]>('/admin/users') });
   const devices = useQuery({ queryKey: ['admin-devices'], queryFn: () => api<DeviceRow[]>('/admin/devices') });
   const refresh = () => qc.invalidateQueries({ queryKey: ['admin-users'] }).then(() => qc.invalidateQueries({ queryKey: ['admin-devices'] }));
@@ -298,6 +353,8 @@ function AdminPanel() {
               <span className="text-base font-semibold">{u.name}</span>
               <Badge color={u.role === 'admin' ? 'blue' : 'slate'}>{u.role === 'admin' ? '관리자' : '직원'}</Badge>
               {!u.active && <Badge color="red">사용 중지</Badge>}
+              <span className="min-w-0 truncate text-sm text-slate-500">{mailLabel(u)}</span>
+              <Button tone="plain" className="ml-auto !min-h-9 text-sm" onClick={() => setMailEdit({ id: u.id, name: u.name, service: u.mail_service ?? '', address: u.mail_address ?? '' })}>메일</Button>
               {u.role !== 'admin' && (
                 <span className="ml-auto flex gap-2">
                   <Button tone="plain" className="!min-h-9 text-sm" onClick={() => reissue(u)}>PIN 재발급</Button>
@@ -332,6 +389,21 @@ function AdminPanel() {
       </Card>
 
       <ArchiveCard />
+
+      {mailEdit && (
+        <Modal title={`${mailEdit.name} 님의 메일`} onClose={() => setMailEdit(null)}>
+          <div className="space-y-3">
+            <p className="text-sm text-slate-500">이 직원이 거래 내용을 보낼 때 열 메일 서비스입니다. 직원이 설정의 "내 메일"에서 직접 바꿀 수도 있습니다.</p>
+            <MailFields service={mailEdit.service} address={mailEdit.address} onService={(service) => setMailEdit({ ...mailEdit, service })} onAddress={(address) => setMailEdit({ ...mailEdit, address })} />
+            <Button className="w-full" disabled={!mailEdit.service} onClick={() => guard(async () => {
+              await api(`/admin/users/${mailEdit.id}/mail`, { method: 'PUT', body: { mail_service: mailEdit.service, mail_address: mailEdit.address.trim() } });
+              toast('저장했습니다.');
+              setMailEdit(null);
+              refresh();
+            })}>저장</Button>
+          </div>
+        </Modal>
+      )}
 
       {issued && (
         <Modal title={issued.title} onClose={() => setIssued(null)}>

@@ -5,10 +5,22 @@ export type Kind = 'cut' | 'make';
 export const COLORS = ['화이트', '블랙', '실버', '헨켈'] as const;
 export type Color = (typeof COLORS)[number];
 
+/** 메일 서비스: 거래 내용을 보낼 때 이 서비스의 메일 작성 페이지를 연다 */
+export type MailService = 'gmail' | 'outlook' | 'naver' | 'daum' | 'app';
+export const MAIL_SERVICES: { key: MailService; label: string; hint: string }[] = [
+  { key: 'gmail', label: 'Gmail', hint: '받는 사람·제목·내용이 채워진 작성 창이 열립니다' },
+  { key: 'outlook', label: 'Outlook (웹)', hint: '받는 사람·제목·내용이 채워진 작성 창이 열립니다' },
+  { key: 'naver', label: '네이버 메일', hint: '작성 창을 열고 내용을 복사해 둡니다 (붙여넣기 필요할 수 있음)' },
+  { key: 'daum', label: '다음 메일', hint: '작성 창을 열고 내용을 복사해 둡니다 (붙여넣기 필요)' },
+  { key: 'app', label: '기본 메일 앱', hint: '컴퓨터·폰에 설정된 메일 프로그램이 열립니다' },
+];
+
 export interface User {
   id: number;
   name: string;
   role: Role;
+  mail_service?: MailService | null;
+  mail_address?: string | null;
 }
 
 export interface Bar {
