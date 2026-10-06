@@ -285,44 +285,46 @@ export default function OrderForm({
       {compact ? (
         <Card>
           <h3 className="mb-2 text-base font-bold">절단서</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-base">
-              <thead>
-                <tr className="border-b border-slate-400 text-sm text-slate-600">
-                  <th className="py-1.5 pr-1.5 font-semibold">바 이름</th>
-                  <th className="w-24 px-1.5 py-1.5 font-semibold">길이(mm)</th>
-                  <th className="w-16 px-1.5 py-1.5 font-semibold">수량</th>
-                  {kind === 'cut' && <th className="w-24 px-1.5 py-1.5 font-semibold">색상</th>}
-                  <th className="w-9 py-1.5" />
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((it, i) => (
-                  <tr key={i} className="border-b border-slate-200">
-                    <td className="py-1.5 pr-1.5">
-                      <BarInput value={it.bar_name} bars={bars.data ?? []} invalid={!!it.bar_name && bars.isSuccess && !rate.has(it.bar_name)}
-                        onChange={(v) => setItem(i, { bar_name: v })} />
-                    </td>
-                    <td className="px-1.5 py-1.5">
-                      <input inputMode="numeric" aria-label="길이(mm)" value={it.length_mm || ''}
-                        onChange={(e) => setItem(i, { length_mm: Number(e.target.value.replace(/\D/g, '')) })} />
-                    </td>
-                    <td className="px-1.5 py-1.5">
-                      <input inputMode="numeric" aria-label="수량" value={it.qty || ''}
-                        onChange={(e) => setItem(i, { qty: Number(e.target.value.replace(/\D/g, '')) })} />
-                    </td>
-                    {kind === 'cut' && <td className="px-1.5 py-1.5">{colorSelect(it.color, (c) => setItem(i, { color: c }))}</td>}
-                    <td className="py-1.5 text-right">
-                      {items.length > 1 && (
-                        <button type="button" aria-label="줄 삭제" title="줄 삭제"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded text-slate-500 hover:bg-red-100 hover:text-red-700"
-                          onClick={() => setItems((a) => a.filter((_, x) => x !== i))}><TrashIcon /></button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* 넓은 화면은 표처럼 한 줄, 폰에서는 줄마다 카드로 쌓아 입력칸이 좁아지지 않게 한다 */}
+          <div className={`hidden gap-2 border-b border-slate-400 pb-1.5 text-sm font-semibold text-slate-600 sm:grid ${kind === 'cut' ? 'sm:grid-cols-[1fr_6rem_4rem_6rem_2.25rem]' : 'sm:grid-cols-[1fr_6rem_4rem_2.25rem]'}`}>
+            <span>바 이름</span><span>길이(mm)</span><span>수량</span>{kind === 'cut' && <span>색상</span>}<span />
+          </div>
+          <div className="space-y-2.5 sm:space-y-0">
+            {items.map((it, i) => (
+              <div key={i}
+                className={`grid grid-cols-2 gap-2 rounded-xl border border-slate-300 p-2.5 sm:items-center sm:rounded-none sm:border-0 sm:border-b sm:border-slate-200 sm:p-0 sm:py-1.5 ${kind === 'cut' ? 'sm:grid-cols-[1fr_6rem_4rem_6rem_2.25rem]' : 'sm:grid-cols-[1fr_6rem_4rem_2.25rem]'}`}>
+                <div className="col-span-2 sm:col-span-1">
+                  <span className="mb-0.5 block text-sm font-semibold text-slate-600 sm:hidden">바 이름</span>
+                  <BarInput value={it.bar_name} bars={bars.data ?? []} invalid={!!it.bar_name && bars.isSuccess && !rate.has(it.bar_name)}
+                    onChange={(v) => setItem(i, { bar_name: v })} />
+                </div>
+                <label className="block">
+                  <span className="mb-0.5 block text-sm font-semibold text-slate-600 sm:hidden">길이(mm)</span>
+                  <input inputMode="numeric" aria-label="길이(mm)" value={it.length_mm || ''}
+                    onChange={(e) => setItem(i, { length_mm: Number(e.target.value.replace(/\D/g, '')) })} />
+                </label>
+                <label className="block">
+                  <span className="mb-0.5 block text-sm font-semibold text-slate-600 sm:hidden">수량</span>
+                  <input inputMode="numeric" aria-label="수량" value={it.qty || ''}
+                    onChange={(e) => setItem(i, { qty: Number(e.target.value.replace(/\D/g, '')) })} />
+                </label>
+                {kind === 'cut' && (
+                  <label className="col-span-2 block sm:col-span-1">
+                    <span className="mb-0.5 block text-sm font-semibold text-slate-600 sm:hidden">색상</span>
+                    {colorSelect(it.color, (c) => setItem(i, { color: c }))}
+                  </label>
+                )}
+                <div className="col-span-2 sm:col-span-1 sm:text-right">
+                  {items.length > 1 && (
+                    <button type="button" aria-label="줄 삭제" title="줄 삭제"
+                      className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-slate-400 text-base font-semibold text-red-700 hover:bg-red-100 sm:h-9 sm:w-9 sm:rounded sm:border-0 sm:text-slate-500 sm:hover:text-red-700"
+                      onClick={() => setItems((a) => a.filter((_, x) => x !== i))}>
+                      <TrashIcon /><span className="sm:hidden">이 줄 삭제</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
           <Button tone="plain" type="button" className="mt-2.5 w-full" onClick={() => setItems((a) => [...a, emptyItem(a[a.length - 1]?.color ?? '화이트')])}>
             + 줄 추가
