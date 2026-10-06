@@ -18,9 +18,9 @@ const TABS = [
 
 const ROLE_LABEL = { admin: '관리자', staff: '직원', workshop: '작업장' } as const;
 
-/** 로고: 골드 글씨 */
+/** 로고: 노란 글씨 */
 function Logo() {
-  return <span className="whitespace-nowrap text-lg font-bold tracking-wide text-[#d4af37]">화성알루미늄</span>;
+  return <span className="whitespace-nowrap text-lg font-bold tracking-wide text-[#facc15]">화성알루미늄</span>;
 }
 
 function Shell() {
@@ -44,7 +44,7 @@ function Shell() {
                   end
                   className={({ isActive }) =>
                     `cursor-pointer whitespace-nowrap border-b-4 px-0 pb-2.5 pt-2 text-center text-[13px] font-semibold tracking-tight sm:px-4 sm:text-base sm:tracking-normal ${
-                      isActive ? 'border-[#d4af37] text-white' : 'border-white text-slate-300 hover:text-white'
+                      isActive ? 'border-[#facc15] text-white' : 'border-white text-slate-300 hover:text-white'
                     }`
                   }
                 >

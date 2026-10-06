@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 
 // 작은 막대 그래프 도구 (라이브러리 없이 SVG 로 직접 그린다)
 
-export const GOLD = '#b8962e';
+export const YELLOW = '#eab308';
 export const GRAPHITE = '#3b4249';
 
 /** 큰 숫자를 짧게: 12,000 → 1.2만, 120,000,000 → 1.2억 */
@@ -109,7 +109,7 @@ export interface RankRow {
 }
 
 /** 많은 순 순위 막대 (가로) */
-export function RankBars({ rows, color = GOLD, empty = '내용이 없습니다.' }: { rows: RankRow[]; color?: string; empty?: ReactNode }) {
+export function RankBars({ rows, color = YELLOW, empty = '내용이 없습니다.' }: { rows: RankRow[]; color?: string; empty?: ReactNode }) {
   if (rows.length === 0) return <p className="py-6 text-center text-slate-500">{empty}</p>;
   const max = Math.max(...rows.map((r) => r.value), 1);
   return (

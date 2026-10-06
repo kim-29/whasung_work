@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api, fmtKg, fmtWon, kstMonth } from '../api';
-import { BarChart, GOLD, GRAPHITE, RankBars, Stat, short } from '../charts';
+import { BarChart, GRAPHITE, RankBars, Stat, short, YELLOW } from '../charts';
 import { Card } from '../ui';
 import { STOCK_LENGTH_M, toStock } from './money';
 
@@ -76,7 +76,7 @@ export default function Analytics() {
               <BarChart
                 labels={d.series.map((s) => s.label)}
                 tickLabels={tickLabels}
-                series={[{ name: '환산수량', color: GOLD, values: d.series.map((s) => Math.round(bons(s.usage_m) * 10) / 10) }]}
+                series={[{ name: '환산수량', color: YELLOW, values: d.series.map((s) => Math.round(bons(s.usage_m) * 10) / 10) }]}
                 format={(n) => (Number.isInteger(n) ? String(n) : n.toFixed(1))}
               />
             </div>
@@ -109,7 +109,7 @@ export default function Analytics() {
                 labels={d.series.map((s) => s.label)}
                 tickLabels={tickLabels}
                 series={[
-                  { name: '판매금액', color: GOLD, values: d.series.map((s) => s.amount) },
+                  { name: '판매금액', color: YELLOW, values: d.series.map((s) => s.amount) },
                   { name: '제작비용', color: GRAPHITE, values: d.series.map((s) => s.make_cost) },
                 ]}
                 format={short}
