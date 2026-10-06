@@ -8,7 +8,7 @@
   - `migrations/000N_*.sql` (현재 0001~0005), `test/*.test.ts` (vitest-pool-workers)
 - `web/` — Vite + React + TS + Tailwind v4, TanStack Query, HashRouter, PWA. GitHub Pages 배포(push 시 Actions 빌드).
   - `src/pages/*` 화면, `mail.tsx` 업체에 메일 보내기(웹메일 작성 URL), `api.ts`(kstToday 등), `auth.tsx`, `types.ts`
-- `blender/` — 도면 뷰어 템플릿(three.js, esbuild)과 `skill/whasung-blender-upload`(Blender→서버 업로드 스킬, `.skill` 패키지 포함).
+- `blender/` — 도면 뷰어 템플릿(three.js, esbuild)과 `skill/whasung-blender-upload`(Blender→서버 업로드 스킬. **저장소에는 올리지 않고(.gitignore) 로컬에만 둔다**. `.skill` 패키징은 `PYTHONUTF8=1` 로 skill-creator 의 `package_skill`, 결과물은 저장소 밖 `C:\workspace\whasung-skill-package\`).
 
 ## 실행·검증
 - 개발: `.claude/launch.json` 의 server(8787), web(5173) 사용. 서버 테스트 `npm test --workspace server`, 타입 `npx tsc --noEmit -p web`.

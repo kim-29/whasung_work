@@ -4,3 +4,6 @@ dist
 .dev.vars
 *.local
 .prod-secrets.json
+
+# Blender 업로드 스킬은 저장소에 올리지 않는다 (내 컴퓨터에서 .skill 로 패키징해 Claude 계정에 설치)
+blender/skill/
