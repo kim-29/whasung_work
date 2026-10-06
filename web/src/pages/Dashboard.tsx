@@ -4,6 +4,7 @@ import { api, fmtDate, fmtKg, fmtWon, kstMonth, kstToday } from '../api';
 import { useAuth } from '../auth';
 import { KIND_LABEL, STATUS_LABEL, type Color, type Kind, type Status } from '../types';
 import { Badge, Button, Card, Field, useToast } from '../ui';
+import { orderMail, statementMail, useCompanyMail, type MailOrder } from '../mail';
 import { MakeCostBox, PriceLine, toStock, totalOf } from './money';
 import OrderDetailModal, { openDrawing } from './OrderDetailModal';
 
@@ -38,6 +39,14 @@ export default function Dashboard() {
   );
 }
 
+/** 제작비용·단가가 비어 있으면 메일에 '미입력/단가 미설정'으로 나간다는 경고 문구 (없으면 undefined) */
+const mailWarning = (rows: { kind: Kind; make_cost: number | null; amount: number | null }[]) => {
+  const noMake = rows.filter((o) => o.kind === 'make' && o.make_cost == null).length;
+  const noPrice = rows.filter((o) => o.amount == null).length;
+  const parts = [noMake && `제작비용이 입력되지 않은 건이 ${noMake}건 있습니다.`, noPrice && `단가가 설정되지 않은 건이 ${noPrice}건 있습니다.`].filter(Boolean);
+  return parts.length ? parts.join('\n') + '\n메일에는 \"미입력\" 또는 \"단가 미설정\"으로 표시됩니다.' : undefined;
+};
+
 const Th = ({ children, right }: { children?: React.ReactNode; right?: boolean }) => (
   <th className={`whitespace-nowrap py-2 pr-2 font-semibold ${right ? 'text-right' : ''}`}>{children}</th>
 );
@@ -56,6 +65,7 @@ function Monthly() {
   const qc = useQueryClient();
   const toast = useToast();
   const isAdmin = user!.role === 'admin';
+  const mail = useCompanyMail();
   const [month, setMonth] = useState(kstMonth());
   const [detail, setDetail] = useState<number | null>(null);
   const q = useQuery({
@@ -65,7 +75,7 @@ function Monthly() {
         summary: { count: number; total_weight: number; total_amount: number; total_make_cost: number; make_cost_missing: number; paid_count: number; unpaid_count: number };
         orders: {
           id: number; company: string; kind: Kind; color: Color | null; status: Status; actual_weight: number | null;
-          ordered_at: string; completed_at: string | null; paid_at: string | null; has_drawing: number;
+          ordered_at: string; completed_at: string | null; paid_at: string | null; has_drawing: number; drawing_archived: number;
           price_per_kg: number | null; amount: number | null; make_cost: number | null;
         }[];
       }>(`/dashboard/monthly?month=${month}`),
@@ -119,6 +129,10 @@ function Monthly() {
           <div className="flex gap-2">
             <Button tone="plain" className="!min-h-9 text-sm" onClick={() => setDetail(o.id)}>세부내역</Button>
             {o.has_drawing ? <Button tone="plain" className="!min-h-9 text-sm" onClick={() => openDrawing(o.id).catch((e) => toast(e.message, 'error'))}>도면</Button> : null}
+            {!o.has_drawing && o.drawing_archived ? <Badge>도면 보관됨</Badge> : null}
+            {(o.status === 'unpaid' || o.status === 'paid') && (
+              <Button tone="plain" className="!min-h-9 text-sm" onClick={() => mail.send(o.company, orderMail(o), mailWarning([o]))}>이메일로 내용 전송</Button>
+            )}
             {isAdmin && (
               <Button tone="plain" className="ml-auto flex !min-h-9 items-center gap-1.5 text-sm text-red-700" title="삭제" aria-label="삭제" onClick={() => remove(o)}>
                 <TrashIcon /> 삭제
@@ -129,6 +143,7 @@ function Monthly() {
       ))}
       {q.data?.orders.length === 0 && <p className="py-8 text-center text-slate-500">이 달의 거래내역이 없습니다.</p>}
       {detail !== null && <OrderDetailModal id={detail} canEdit onClose={() => setDetail(null)} />}
+      {mail.prompt}
     </div>
   );
 }
@@ -175,6 +190,7 @@ function Usage() {
 function Unpaid() {
   const qc = useQueryClient();
   const toast = useToast();
+  const mail = useCompanyMail();
   const [detail, setDetail] = useState<number | null>(null);
   const q = useQuery({ queryKey: ['unpaid'], queryFn: () => api<UnpaidRow[]>('/dashboard/unpaid') });
   const rows = q.data ?? [];
@@ -230,6 +246,7 @@ function Unpaid() {
             <div className="flex flex-wrap gap-2">
               <Button tone="plain" onClick={() => setDetail(r.id)}>세부내역</Button>
               {r.has_drawing ? <Button tone="plain" onClick={() => openDrawing(r.id).catch((e) => toast(e.message, 'error'))}>도면</Button> : null}
+              <Button tone="plain" onClick={() => mail.send(r.company, orderMail(r), mailWarning([r]))}>이메일로 내용 전송</Button>
               <span className="ml-auto flex gap-2">
                 {group.length > 1 && <Button tone="plain" onClick={() => payRows(group)}>같은 지시서 {group.length}건 함께 납입</Button>}
                 <Button tone="success" onClick={() => payRows([r])}>납입</Button>
@@ -239,6 +256,7 @@ function Unpaid() {
         );
       })}
       {detail !== null && <OrderDetailModal id={detail} canEdit onClose={() => setDetail(null)} />}
+      {mail.prompt}
     </div>
   );
 }
@@ -253,6 +271,7 @@ interface CompanyDetailRow {
 function ByCompany() {
   const qc = useQueryClient();
   const toast = useToast();
+  const mail = useCompanyMail();
   const [company, setCompany] = useState('');
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const summary = useQuery({
@@ -384,13 +403,15 @@ function ByCompany() {
           </div>
           <div className="no-print mt-4 grid grid-cols-2 gap-2">
             <Button onClick={() => window.print()}>인쇄하기</Button>
-            <Button tone="success" disabled={chosen.length === 0} onClick={paySelected}>
+            <Button onClick={() => mail.send(company, statementMail(company, rows.map((r) => ({ ...r, company }) as MailOrder)), mailWarning(rows))}>이메일로 내용 전송</Button>
+            <Button tone="success" className="col-span-2" disabled={chosen.length === 0} onClick={paySelected}>
               선택 납입{chosen.length ? ` (${chosen.length}건)` : ''}
             </Button>
           </div>
           <p className="no-print mt-1 text-sm text-slate-500">납입할 건을 체크하세요. 같은 지시서에서 나뉜 건은 함께 체크됩니다.</p>
         </Card>
       )}
+      {mail.prompt}
     </div>
   );
 }

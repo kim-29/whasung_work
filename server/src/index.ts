@@ -3,6 +3,8 @@ import { cors } from 'hono/cors';
 import { z } from 'zod';
 import { admin, anyUser, auth, authenticateToken } from './auth';
 import { Hub } from './hub';
+import { analytics } from './routes-analytics';
+import { archive, backup } from './routes-archive';
 import { drawings, orders } from './routes-orders';
 import { bars, companies, dashboard, ingest, prices } from './routes-misc';
 import type { AppEnv } from './types';
@@ -28,6 +30,9 @@ app.route('/api/drawings', drawings);
 app.route('/api/prices', prices);
 app.route('/api/companies', companies);
 app.route('/api/dashboard', dashboard);
+app.route('/api/analytics', analytics);
+app.route('/api/admin/backup', backup);
+app.route('/api/admin/archive', archive);
 app.route('/api/ingest', ingest);
 
 // ---------- Web Push 구독 ----------

@@ -65,3 +65,30 @@ export const fmtWon = (n: number | null | undefined) =>
 const kstNow = () => new Date(Date.now() + 9 * 3600_000).toISOString();
 export const kstToday = () => kstNow().slice(0, 10);
 export const kstMonth = () => kstNow().slice(0, 7);
+/** 파일(백업, CSV, 도면 등)을 받아 오는 요청. 로그인 정보를 붙여서 보내고, 실패하면 서버가 알려 준 이유로 오류를 낸다. */
+export async function apiBlob(path: string): Promise<Blob> {
+  const token = tokenStore.get();
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  } catch {
+    throw new ApiError('서버에 연결할 수 없습니다. 인터넷 연결을 확인해 주세요.', 0);
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new ApiError((data as { error?: string }).error ?? '파일을 받지 못했습니다.', res.status);
+  }
+  return res.blob();
+}
+
+/** 브라우저의 '다운로드'로 파일을 저장한다 */
+export function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}

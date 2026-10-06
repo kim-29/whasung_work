@@ -9,7 +9,7 @@ export async function putDrawing(env: Env, orderId: number, html: string): Promi
   const key = `drawing:${orderId}`;
   await env.KV.put(key, html);
   await env.DB.prepare(
-    `UPDATE orders SET drawing_key = ?1
+    `UPDATE orders SET drawing_key = ?1, drawing_archived_at = NULL
       WHERE id = ?2 OR (group_id IS NOT NULL AND group_id = (SELECT group_id FROM orders WHERE id = ?2))`,
   )
     .bind(key, orderId)

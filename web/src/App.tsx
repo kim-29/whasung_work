@@ -1,5 +1,6 @@
 import { HashRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth';
+import Analytics from './pages/Analytics';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import NewOrder from './pages/NewOrder';
@@ -11,6 +12,7 @@ const TABS = [
   { to: '/new', label: '작업지시서' },
   { to: '/work', label: '작업목록' },
   { to: '/dashboard', label: '대시보드' },
+  { to: '/analytics', label: '판매분석' },
   { to: '/settings', label: '설정' },
 ];
 
@@ -34,14 +36,14 @@ function Shell() {
             <Logo />
           </div>
           {isFront && (
-            <nav className="order-3 grid w-full grid-cols-4 sm:order-2 sm:flex sm:w-auto sm:gap-1">
+            <nav className="order-3 grid w-full grid-cols-5 sm:order-2 sm:flex sm:w-auto sm:gap-1">
               {TABS.map((t) => (
                 <NavLink
                   key={t.to}
                   to={t.to}
                   end
                   className={({ isActive }) =>
-                    `cursor-pointer whitespace-nowrap border-b-4 px-1 pb-2.5 pt-2 text-center text-[15px] font-semibold sm:px-4 sm:text-base ${
+                    `cursor-pointer whitespace-nowrap border-b-4 px-0 pb-2.5 pt-2 text-center text-[13px] font-semibold tracking-tight sm:px-4 sm:text-base sm:tracking-normal ${
                       isActive ? 'border-[#d4af37] text-white' : 'border-white text-slate-300 hover:text-white'
                     }`
                   }
@@ -60,6 +62,7 @@ function Shell() {
         <Routes>
           {isFront && <Route path="/new" element={<NewOrder />} />}
           {isFront && <Route path="/dashboard" element={<Dashboard />} />}
+          {isFront && <Route path="/analytics" element={<Analytics />} />}
           <Route path="/work" element={<WorkList />} />
           {isFront && <Route path="/settings" element={<Settings />} />}
           <Route path="*" element={<Navigate to={isFront ? '/new' : '/work'} replace />} />

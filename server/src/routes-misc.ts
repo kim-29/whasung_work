@@ -198,7 +198,7 @@ dashboard.get('/monthly', async (c) => {
   if (!/^\d{4}-\d{2}$/.test(month)) return c.json({ error: '월 형식이 올바르지 않습니다.' }, 400);
   const { results } = await c.env.DB.prepare(
     `SELECT o.id, o.company, o.kind, o.color, o.status, o.actual_weight, o.created_at AS ordered_at,
-            o.completed_at, o.paid_at, o.drawing_key IS NOT NULL AS has_drawing,
+            o.completed_at, o.paid_at, o.drawing_key IS NOT NULL AS has_drawing, o.drawing_archived_at IS NOT NULL AS drawing_archived,
             ${PRICE_SQL} AS price_per_kg, ROUND(o.actual_weight * ${PRICE_SQL}) AS amount, o.make_cost
        FROM orders o WHERE strftime('%Y-%m', o.created_at, '+9 hours') = ?1 ORDER BY o.id DESC`,
   )

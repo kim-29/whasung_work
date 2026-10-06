@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { api, fmtDate } from '../api';
 import { useAuth } from '../auth';
 import { PushCard } from '../push';
+import { ArchiveCard } from './Archive';
 import { COLORS, type Bar, type ColorPrice, type Company } from '../types';
 import { Badge, Button, Card, Field, Modal, useToast } from '../ui';
 
@@ -289,6 +290,8 @@ function AdminPanel() {
           ))}
         </div>
       </Card>
+
+      <ArchiveCard />
 
       {issued && (
         <Modal title={issued.title} onClose={() => setIssued(null)}>
