@@ -65,7 +65,7 @@ function Shell() {
           {isFront && <Route path="/analytics" element={<Analytics />} />}
           <Route path="/work" element={<WorkList />} />
           {isFront && <Route path="/settings" element={<Settings />} />}
-          <Route path="*" element={<Navigate to={isFront ? '/new' : '/work'} replace />} />
+          <Route path="*" element={<Navigate to={isFront ? '/dashboard' : '/work'} replace />} />
         </Routes>
       </main>
     </div>

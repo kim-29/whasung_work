@@ -15,8 +15,8 @@ interface UnpaidRow {
   price_per_kg: number | null; amount: number | null; make_cost: number | null;
 }
 
-// 보여주는 순서: 월간 → 자재 사용 → 미납 → 업체별 미납
-const TABS = ['월간 거래내역', '자재 사용내역', '미납 거래내역', '업체별 미납'] as const;
+// 보여주는 순서: 월간 → 미납 → 업체별 미납 → 자재 사용
+const TABS = ['월간 거래내역', '미납 거래내역', '업체별 미납', '자재 사용내역'] as const;
 
 export default function Dashboard() {
   const [tab, setTab] = useState<(typeof TABS)[number]>(TABS[0]);
@@ -32,9 +32,9 @@ export default function Dashboard() {
         ))}
       </div>
       {tab === TABS[0] && <Monthly />}
-      {tab === TABS[1] && <Usage />}
-      {tab === TABS[2] && <Unpaid />}
-      {tab === TABS[3] && <ByCompany />}
+      {tab === TABS[1] && <Unpaid />}
+      {tab === TABS[2] && <ByCompany />}
+      {tab === TABS[3] && <Usage />}
     </div>
   );
 }
