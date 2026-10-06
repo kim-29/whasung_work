@@ -4,7 +4,7 @@ import Analytics from './pages/Analytics';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import NewOrder from './pages/NewOrder';
-import Settings, { BarsPage, CompaniesPage } from './pages/Settings';
+import Settings, { BarsPage, CompaniesPage, StaffPage } from './pages/Settings';
 import WorkList from './pages/WorkList';
 import { useRealtime } from './realtime';
 
@@ -67,6 +67,7 @@ function Shell() {
           {isFront && <Route path="/settings" element={<Settings />} />}
           {isFront && <Route path="/settings/companies" element={<CompaniesPage />} />}
           {isFront && <Route path="/settings/bars" element={<BarsPage />} />}
+          {user!.role === 'admin' && <Route path="/settings/staff" element={<StaffPage />} />}
           <Route path="*" element={<Navigate to={isFront ? '/dashboard' : '/work'} replace />} />
         </Routes>
       </main>

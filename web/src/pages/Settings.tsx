@@ -15,11 +15,11 @@ export default function Settings() {
       <h1 className="text-xl font-bold">설정</h1>
       <Card className="divide-y divide-slate-200 !p-0">
         <MenuLink to="/settings/companies" title="업체 관리" sub="거래 업체의 이름·전화·이메일" />
-        <MenuLink to="/settings/bars" title="바(자재) 목록" sub="바 이름과 1미터당 무게(kg/m)" />
+        <MenuLink to="/settings/bars" title="바(자재) 관리" sub="바 이름과 1미터당 무게(kg/m)" />
+        {user!.role === 'admin' && <MenuLink to="/settings/staff" title="직원/등록기기 관리" sub="직원 PIN, 작업장 PIN, 로그인된 기기 (관리자 전용)" />}
       </Card>
       <PushCard />
       <Prices />
-      {user!.role === 'admin' && <AdminPanel />}
       <Card className="flex items-center justify-between">
         <span className="text-base">{user!.name}님으로 로그인됨</span>
         <Button tone="plain" onClick={() => window.confirm('이 기기에서 로그아웃할까요?') && logout()}>로그아웃</Button>
@@ -59,7 +59,11 @@ export function CompaniesPage() {
 }
 
 export function BarsPage() {
-  return <SubPage title="바(자재) 목록"><Bars /></SubPage>;
+  return <SubPage title="바(자재) 관리"><Bars /></SubPage>;
+}
+
+export function StaffPage() {
+  return <SubPage title="직원/등록기기 관리"><AdminPanel /></SubPage>;
 }
 
 /** 색상별 kg당 단가. 바꾸면 그 시점 이후에 지시되는 작업부터 새 단가가 적용된다. */
