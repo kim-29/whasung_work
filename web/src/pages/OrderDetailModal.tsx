@@ -52,6 +52,7 @@ export default function OrderDetailModal({
           weightInfo={hasWeight ? { actual: o.actual_weight!, pricePerKg: o.price_per_kg ?? null } : undefined}
           makeCostInfo={isMake && showMoney ? { value: o.make_cost ?? null } : undefined}
           submitLabel="수정 저장"
+          compact
           onSubmit={async (v) => {
             await api(`/orders/${id}`, {
               method: 'PATCH',

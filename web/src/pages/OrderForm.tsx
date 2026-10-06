@@ -109,7 +109,7 @@ function CompanyInput({ value, companies, onChange }: { value: string; companies
     </div>
   );
 }
-function BarInput({ value, bars, onChange }: { value: string; bars: Bar[]; onChange: (v: string) => void }) {
+function BarInput({ value, bars, onChange, invalid }: { value: string; bars: Bar[]; onChange: (v: string) => void; invalid?: boolean }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const blurTimer = useRef<number>();
@@ -124,6 +124,8 @@ function BarInput({ value, bars, onChange }: { value: string; bars: Bar[]; onCha
         value={value}
         placeholder="바 이름 입력"
         autoComplete="off"
+        title={invalid ? '설정의 바 목록에 없는 이름입니다 (무게 계산 불가)' : undefined}
+        className={invalid ? '!border-red-600 !bg-red-100' : undefined}
         onFocus={() => setOpen(true)}
         onBlur={() => (blurTimer.current = window.setTimeout(() => setOpen(false), 150))}
         onChange={(e) => {
@@ -168,6 +170,7 @@ export default function OrderForm({
   extra,
   weightInfo,
   makeCostInfo,
+  compact,
   onSubmit,
 }: {
   initial?: OrderFormValues;
@@ -176,6 +179,8 @@ export default function OrderForm({
   extra?: ReactNode;
   weightInfo?: WeightInfo;
   makeCostInfo?: MakeCostInfo;
+  /** 수정 화면용: 절단서를 한 장의 표로, 줄별 예상무게 없이 보여준다 */
+  compact?: boolean;
   onSubmit: (v: OrderFormValues) => Promise<void>;
 }) {
   const bars = useQuery({ queryKey: ['bars'], queryFn: () => api<Bar[]>('/bars'), staleTime: 60_000 });
@@ -277,6 +282,53 @@ export default function OrderForm({
         )}
       </Card>
 
+      {compact ? (
+        <Card>
+          <h3 className="mb-2 text-base font-bold">절단서</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left text-base">
+              <thead>
+                <tr className="border-b border-slate-400 text-sm text-slate-600">
+                  <th className="py-1.5 pr-1.5 font-semibold">바 이름</th>
+                  <th className="w-24 px-1.5 py-1.5 font-semibold">길이(mm)</th>
+                  <th className="w-16 px-1.5 py-1.5 font-semibold">수량</th>
+                  {kind === 'cut' && <th className="w-24 px-1.5 py-1.5 font-semibold">색상</th>}
+                  <th className="w-9 py-1.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it, i) => (
+                  <tr key={i} className="border-b border-slate-200">
+                    <td className="py-1.5 pr-1.5">
+                      <BarInput value={it.bar_name} bars={bars.data ?? []} invalid={!!it.bar_name && bars.isSuccess && !rate.has(it.bar_name)}
+                        onChange={(v) => setItem(i, { bar_name: v })} />
+                    </td>
+                    <td className="px-1.5 py-1.5">
+                      <input inputMode="numeric" aria-label="길이(mm)" value={it.length_mm || ''}
+                        onChange={(e) => setItem(i, { length_mm: Number(e.target.value.replace(/\D/g, '')) })} />
+                    </td>
+                    <td className="px-1.5 py-1.5">
+                      <input inputMode="numeric" aria-label="수량" value={it.qty || ''}
+                        onChange={(e) => setItem(i, { qty: Number(e.target.value.replace(/\D/g, '')) })} />
+                    </td>
+                    {kind === 'cut' && <td className="px-1.5 py-1.5">{colorSelect(it.color, (c) => setItem(i, { color: c }))}</td>}
+                    <td className="py-1.5 text-right">
+                      {items.length > 1 && (
+                        <button type="button" aria-label="줄 삭제" title="줄 삭제"
+                          className="h-9 w-9 rounded text-xl leading-none text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+                          onClick={() => setItems((a) => a.filter((_, x) => x !== i))}>×</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Button tone="plain" type="button" className="mt-2.5 w-full" onClick={() => setItems((a) => [...a, emptyItem(a[a.length - 1]?.color ?? '화이트')])}>
+            + 줄 추가
+          </Button>
+        </Card>
+      ) : (
       <Card>
         <h3 className="mb-2 text-base font-bold">절단서</h3>
         <div className="space-y-2.5">
@@ -320,6 +372,7 @@ export default function OrderForm({
           + 줄 추가
         </Button>
       </Card>
+      )}
 
       {weightInfo ? (
         <Card className="space-y-2">
@@ -327,7 +380,7 @@ export default function OrderForm({
             <input inputMode="decimal" value={actualWeight} onChange={(e) => setActualWeight(e.target.value.replace(/[^\d.]/g, ''))} />
           </Field>
           <p className="text-sm text-slate-600">
-            수정 전 무게 <b>{fmtKg(weightInfo.actual)}</b> · 예상무게 {fmtKg(total)}
+            {compact ? <>예상무게 {fmtKg(total)}</> : <>수정 전 무게 <b>{fmtKg(weightInfo.actual)}</b> · 예상무게 {fmtKg(total)}</>}
           </p>
           <p className="border-t border-slate-300 pt-2 text-xl font-bold">
             금액{' '}
