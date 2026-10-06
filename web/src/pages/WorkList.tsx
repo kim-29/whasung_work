@@ -20,7 +20,7 @@ function OrderCard({ o, siblings, isFront, onEdit }: { o: OrderSummary; siblings
     setBusy(true);
     try {
       await fn();
-      toast(ok);
+      if (isFront) toast(ok); // 작업장 화면은 카드가 바뀌는 것으로 충분하다 (성공 팝업 없음)
       qc.invalidateQueries();
     } catch (e) {
       toast((e as Error).message, 'error');

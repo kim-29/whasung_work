@@ -8,13 +8,17 @@ self.addEventListener('push', (event) => {
     data = { ...data, ...event.data.json() };
   } catch (_) {}
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: 'icon-192.png',
-      badge: 'icon-192.png',
-      tag: data.orderId ? 'order-' + data.orderId : undefined,
-      vibrate: [200, 100, 200],
-      requireInteraction: true,
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      // 앱 화면을 보고 있는 중이면 화면이 직접 알림음을 내므로 OS 알림 팝업은 띄우지 않는다
+      if (list.some((c) => c.visibilityState === 'visible')) return;
+      return self.registration.showNotification(data.title, {
+        body: data.body,
+        icon: 'icon-192.png',
+        badge: 'icon-192.png',
+        tag: data.orderId ? 'order-' + data.orderId : undefined,
+        vibrate: [200, 100, 200],
+        renotify: true,
+      });
     }),
   );
 });

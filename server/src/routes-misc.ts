@@ -279,6 +279,7 @@ ingest.post('/blender', async (c) => {
     message: r.has_unknown_bar
       ? `새 작업지시(미등록 바 포함): ${input.company}`
       : `새 작업지시: ${input.company}`,
+    alertRoles: ['workshop'],
   });
   return c.json(r, 201);
 });

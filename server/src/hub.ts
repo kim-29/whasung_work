@@ -7,8 +7,13 @@ export interface HubEvent {
   orderId: number;
   company: string;
   message: string;
-  /** 이 역할의 접속자에게만 전달 (없으면 전체) */
+  /** 이 역할의 접속자에게만 전달 (없으면 전체). 받은 화면은 목록만 조용히 새로 읽는다 */
   roles?: ('admin' | 'staff' | 'workshop')[];
+  /**
+   * 알림(소리·푸시)을 받을 역할. 없거나 비어 있으면 아무에게도 알리지 않는다.
+   * 규칙: 새 작업지시 → 작업장, 작업장의 무게 입력·작업 완료 → 프론트(관리자·직원). 그 밖의 변경은 조용히 반영만.
+   */
+  alertRoles?: ('admin' | 'staff' | 'workshop')[];
 }
 
 /** WebSocket 접속을 모아 두었다가 변경 이벤트를 전파하는 Durable Object */
@@ -54,6 +59,7 @@ export async function notify(env: Env, event: HubEvent): Promise<void> {
   } catch (e) {
     console.error('realtime broadcast failed', e);
   }
-  // 화면이 꺼져 있는 기기를 위해 Web Push도 함께 보낸다 (실패해도 요청은 성공 처리)
-  await sendPush(env, event.roles, { title: '화성 알루미늄', body: event.message, orderId: event.orderId }).catch(() => {});
+  // 화면이 꺼져 있는 기기를 위해 Web Push도 함께 보낸다 (알림 대상이 있을 때만, 실패해도 요청은 성공 처리)
+  if (!event.alertRoles?.length) return;
+  await sendPush(env, event.alertRoles, { title: '화성 알루미늄', body: event.message, orderId: event.orderId }).catch(() => {});
 }

@@ -108,6 +108,8 @@ orders.post('/', frontOnly, async (c) => {
     type: 'order_created', orderId: r.id, company: input.company,
     message: `새 작업지시: ${input.company}`,
     roles: manual_weight ? ['admin', 'staff'] : undefined,
+    // 작업장으로 보내는 작업만 작업장에 알린다 (수기 접수는 이미 끝난 건이라 알리지 않음)
+    alertRoles: manual_weight ? [] : ['workshop'],
   });
   return c.json(r, 201);
 });
@@ -189,7 +191,8 @@ orders.post('/:id/weight', anyUser, async (c) => {
     message: next === 'unpaid'
       ? `절단 완료: ${order.company} (${body.data.weight}kg)`
       : `절단 완료, 제작 진행 중: ${order.company} (${body.data.weight}kg)`,
-    roles: ['admin', 'staff'],
+    // 작업장이 입력했을 때만 프론트에 알린다 (프론트가 직접 입력하면 조용히 반영)
+    alertRoles: user.role === 'workshop' ? ['admin', 'staff'] : [],
   });
   return c.json({ status: next });
 });
@@ -207,7 +210,8 @@ orders.post('/:id/complete', anyUser, async (c) => {
   await audit(c.env, user.name, 'complete', id, {});
   await notify(c.env, {
     type: 'order_completed', orderId: id, company: order.company,
-    message: `제작 완료: ${order.company}`, roles: ['admin', 'staff'],
+    message: `제작 완료: ${order.company}`,
+    alertRoles: user.role === 'workshop' ? ['admin', 'staff'] : [],
   });
   return c.json({ status: 'unpaid' });
 });
