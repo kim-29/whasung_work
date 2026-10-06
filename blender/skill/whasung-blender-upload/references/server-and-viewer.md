@@ -48,8 +48,9 @@
 |---|---|
 | 올리다가 "연결이 끊겼습니다" | 새 작업지시는 자동 재시도하지 않는다. 앱에서 작업이 생겼는지 확인하고 없을 때만 다시 실행. 도면 교체(replace)는 자동 재시도됨 |
 | HTTP 403 `error code: 1010` | Cloudflare 가 파이썬 기본 User-Agent 를 봇으로 보고 막은 것. 서버까지 가지 않아 작업지시는 생기지 않으므로 다시 보내도 된다. `upload_order.py` 는 브라우저 형태 User-Agent 를 붙여 보낸다 |
-| HTTP 401 (API 키) | `WHASUNG_API_KEY` 가 서버의 `BLENDER_API_KEY` 와 다름 |
-| 로그인 실패 / 잠김 | `WHASUNG_PIN` 오류. 5번 틀리면 잠기며 관리자가 설정에서 풀어야 한다 |
+| "API 키/PIN 정보를 찾을 수 없습니다" | 설정이 비어 있음. `python scripts/upload_order.py setup --from-secrets-file <프로젝트>/server/.prod-secrets.json` 으로 한 번 저장(확인: `setup --show`). 설정은 환경변수(`WHASUNG_API_URL`/`WHASUNG_API_KEY`/`WHASUNG_PIN`) → `~/.whasung/config.json`(위치는 `WHASUNG_CONFIG` 로 변경) → 코드 기본값(서버 주소만) 순으로 읽는다 |
+| HTTP 401 (API 키) | 저장된 `api_key`(또는 환경변수 `WHASUNG_API_KEY`)가 서버의 `BLENDER_API_KEY` 와 다름. 환경변수가 설정 파일보다 우선하니 둘 다 확인하고, 비밀값을 바꿨다면 `setup` 을 다시 실행 |
+| 로그인 실패 / 잠김 | 저장된 `pin`(또는 `WHASUNG_PIN`)이 틀림. 5번 틀리면 잠기며 관리자가 설정에서 풀어야 한다 |
 | "미등록 바" 경고 | 바 이름이 설정의 바 목록과 다름(하이픈·대소문자). 설정을 고치거나 앱 "내용 수정"에서 이름을 다시 골라 저장 |
 | 도면에 바가 일부만 보임 / 치수선이 바와 섞임 | 오브젝트 이름·재질 이름이 규칙(위 SKILL.md)과 다름 |
 | 도면이 너무 크다 (10MB 초과) | 모델의 메시가 너무 조밀함. Blender 에서 모디파이어/세분화를 줄이거나 Draco 압축을 검토 |

@@ -152,16 +152,30 @@ orders.patch('/:id', frontOnly, async (c) => {
   } else if (make_cost !== undefined) {
     await c.env.DB.prepare(`UPDATE orders SET make_cost = ?1 WHERE id = ?2`).bind(make_cost, id).run();
   }
+  // 절단이 끝나 미납이 된 건을 제작으로 바꾸면: 절단은 끝난 상태(무게 유지)로 작업장의 '제작중'으로 보내고 미납에서는 빠진다
+  const toMake = kind === 'make' && order.kind === 'cut' && order.status === 'unpaid';
+  if (toMake) {
+    await c.env.DB.prepare(`UPDATE orders SET status = 'making', completed_at = NULL WHERE id = ?1 AND status = 'unpaid'`).bind(id).run();
+  }
+  // 제작중인 건을 절단으로 바꾸면 절단은 이미 끝난 것이므로(무게 입력됨) 바로 미납으로 보낸다
+  const toCut = kind === 'cut' && order.kind === 'make' && order.status === 'making';
+  if (toCut) {
+    await c.env.DB.prepare(`UPDATE orders SET status = 'unpaid', completed_at = datetime('now') WHERE id = ?1 AND status = 'making'`).bind(id).run();
+  }
   const user = c.get('user');
   // 무게·제작비용을 고친 경우 수정 전 값도 이력에 남긴다
   await audit(c.env, user.name, 'update', id, {
     ...body.data,
     ...(actual_weight !== undefined ? { previous_weight: order.actual_weight } : {}),
+    ...(toMake ? { status_change: 'unpaid→making' } : {}),
+    ...(toCut ? { status_change: 'making→unpaid' } : {}),
     ...(make_cost !== undefined ? { previous_make_cost: (order as { make_cost?: number | null }).make_cost ?? null } : {}),
   });
   await notify(c.env, {
     type: 'order_updated', orderId: id, company: company ?? order.company,
-    message: `작업지시 수정: ${company ?? order.company}`,
+    message: toMake ? `절단 완료 건을 제작으로 변경: ${company ?? order.company}` : `작업지시 수정: ${company ?? order.company}`,
+    // 제작으로 넘어간 건은 작업장에 새 작업으로 알린다
+    alertRoles: toMake ? ['workshop'] : undefined,
   });
   return c.json({ ok: true });
 });

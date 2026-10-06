@@ -51,6 +51,56 @@ describe('제작비용 · 업체 · 묶음 납입 · 한국 시간', () => {
     expect((await send('PATCH', `/api/orders/${make}`, { make_cost: 60000 }, t)).status).toBe(409);
   });
 
+  it('미납이 된 절단을 제작으로 바꾸면 미납에서 빠져 제작중(무게 유지)으로 작업장에 넘어간다', async () => {
+    const t = await login();
+    await send('POST', '/api/bars', { name: 'MC-A', kg_per_m: 1 }, t);
+    const o = await (await send('POST', '/api/orders', { company: '절단후제작업체', kind: 'cut', items: [{ bar_name: 'MC-A', length_mm: 1000, qty: 3, color: '화이트' }] }, t)).json<{ id: number }>();
+    await send('POST', `/api/orders/${o.id}/weight`, { weight: 3 }, t);
+    const unpaidIds = async () => (await (await call('/api/dashboard/unpaid', { token: t })).json<{ id: number }[]>()).map((r) => r.id);
+    expect(await unpaidIds()).toContain(o.id);
+
+    expect((await send('PATCH', `/api/orders/${o.id}`, { kind: 'make' }, t)).status).toBe(200);
+    const d = await (await call(`/api/orders/${o.id}`, { token: t })).json<{ status: string; kind: string; actual_weight: number; completed_at: string | null }>();
+    expect(d).toMatchObject({ status: 'making', kind: 'make', actual_weight: 3, completed_at: null });
+    expect(await unpaidIds()).not.toContain(o.id);
+
+    // 작업장에서 제작 완료하면 다시 미납으로
+    expect((await send('POST', `/api/orders/${o.id}/complete`, {}, t)).status).toBe(200);
+    expect(await unpaidIds()).toContain(o.id);
+  });
+
+  it('제작중인 건을 절단으로 바꾸면 바로 미납으로 간다', async () => {
+    const t = await login();
+    await send('POST', '/api/bars', { name: 'MC-A', kg_per_m: 1 }, t);
+    const o = await (await send('POST', '/api/orders', { company: '제작취소업체', kind: 'make', items: [{ bar_name: 'MC-A', length_mm: 1000, qty: 2, color: '화이트' }] }, t)).json<{ id: number }>();
+    await send('POST', `/api/orders/${o.id}/weight`, { weight: 2 }, t);
+    await send('PATCH', `/api/orders/${o.id}`, { make_cost: 1000 }, t);
+    expect((await send('PATCH', `/api/orders/${o.id}`, { kind: 'cut' }, t)).status).toBe(200);
+    const d = await (await call(`/api/orders/${o.id}`, { token: t })).json<{ status: string; kind: string; actual_weight: number; completed_at: string | null; make_cost: number | null }>();
+    expect(d).toMatchObject({ status: 'unpaid', kind: 'cut', actual_weight: 2, make_cost: null });
+    expect(d.completed_at).not.toBeNull();
+    const unpaid = await (await call('/api/dashboard/unpaid', { token: t })).json<{ id: number }[]>();
+    expect(unpaid.map((r) => r.id)).toContain(o.id);
+  });
+
+  it('월간 거래내역은 대기(진행중) → 미납 → 완납 순이고 같은 상태는 지시일이 늦은 것부터', async () => {
+    const t = await login();
+    const mk = async (company: string) =>
+      (await (await send('POST', '/api/orders', { company, kind: 'cut', items: [{ bar_name: 'MC-A', length_mm: 1000, qty: 1, color: '화이트' }] }, t)).json<{ id: number }>()).id;
+    const paid = await mk('순서업체');
+    const unpaid = await mk('순서업체');
+    const pending = await mk('순서업체');
+    for (const id of [paid, unpaid]) await send('POST', `/api/orders/${id}/weight`, { weight: 1 }, t);
+    await send('POST', `/api/orders/${paid}/pay`, {}, t);
+    const month = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 7);
+    const r = await (await call(`/api/dashboard/monthly?month=${month}`, { token: t })).json<{ orders: { id: number; status: string }[] }>();
+    const mine = r.orders.filter((x) => [paid, unpaid, pending].includes(x.id)).map((x) => x.id);
+    expect(mine).toEqual([pending, unpaid, paid]);
+    const rank = { pending: 0, making: 0, unpaid: 1, paid: 2 } as Record<string, number>;
+    const ranks = r.orders.map((x) => rank[x.status]);
+    expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+  });
+
   it('업체는 자동 등록되고, 이름 변경·합치기·삭제 규칙이 지켜진다', async () => {
     const t = await login();
     const mk = (company: string) =>

@@ -38,6 +38,7 @@ export default function NewOrder() {
         key={formKey}
         submitLabel="작업장으로 전송"
         allowManual
+        compact
         onSubmit={send}
         extra={
           <Card>

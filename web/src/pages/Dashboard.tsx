@@ -186,8 +186,13 @@ function Unpaid() {
   const toast = useToast();
   const mail = useCompanyMail();
   const [detail, setDetail] = useState<number | null>(null);
+  const [company, setCompany] = useState('');
   const q = useQuery({ queryKey: ['unpaid'], queryFn: () => api<UnpaidRow[]>('/dashboard/unpaid') });
-  const rows = q.data ?? [];
+  const all = q.data ?? [];
+  const companies = [...new Set(all.map((r) => r.company))].sort((a, b) => a.localeCompare(b, 'ko'));
+  // 선택한 업체가 더는 미납에 없으면(납입 처리 등) 전체로 돌아간다
+  const picked = companies.includes(company) ? company : '';
+  const rows = picked ? all.filter((r) => r.company === picked) : all;
   const rowTotal = (r: UnpaidRow) => totalOf(r.amount, r.kind === 'make' ? r.make_cost : null) ?? 0;
   const grand = rows.reduce((a, r) => a + rowTotal(r), 0);
   // 같은 지시서에서 색상별로 나뉜 건(둘 이상)을 찾는다
@@ -215,13 +220,21 @@ function Unpaid() {
   return (
     <div className="space-y-2.5">
       {q.isLoading && <p className="text-base">불러오는 중...</p>}
+      {all.length > 0 && (
+        <Field label="업체 조회" inline>
+          <select value={picked} onChange={(e) => setCompany(e.target.value)}>
+            <option value="">전체 업체</option>
+            {companies.map((c) => <option key={c} value={c}>{c} ({all.filter((r) => r.company === c).length}건)</option>)}
+          </select>
+        </Field>
+      )}
       {rows.length > 0 && (
         <Card className="flex items-center justify-between !p-3">
-          <span className="text-base font-semibold">미납 합계 {rows.length}건 (제작비용 포함)</span>
+          <span className="text-base font-semibold">{picked ? `${picked} ` : ''}미납 합계 {rows.length}건 (제작비용 포함)</span>
           <span className="text-lg font-bold">{fmtWon(grand)}</span>
         </Card>
       )}
-      {rows.length === 0 && !q.isLoading && <p className="py-10 text-center text-lg text-slate-500">미납 내역이 없습니다.</p>}
+      {all.length === 0 && !q.isLoading && <p className="py-10 text-center text-lg text-slate-500">미납 내역이 없습니다.</p>}
       {rows.map((r) => {
         const group = siblings(r);
         return (
@@ -270,6 +283,7 @@ function ByCompany() {
   const mail = useCompanyMail();
   const [company, setCompany] = useState('');
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [editId, setEditId] = useState<number | null>(null);
   const summary = useQuery({
     queryKey: ['by-company'],
     queryFn: () => api<{ company: string; count: number; total_weight: number; total_amount: number; total_make_cost: number; make_cost_missing: number; unpriced: number }[]>('/dashboard/by-company'),
@@ -316,6 +330,11 @@ function ByCompany() {
   };
 
   const close = () => { setCompany(''); setSelected(new Set()); };
+  // 수정은 한 건씩: 같은 지시서에서 나뉜 건이 함께 체크되어도 수정할 건은 하나만 고르게 한다
+  const editSelected = () => {
+    if (chosen.length !== 1) return toast('수정할 거래를 하나만 선택해 주세요.', 'error');
+    setEditId(chosen[0].id);
+  };
 
   return (
     <div className="space-y-2.5">
@@ -345,13 +364,20 @@ function ByCompany() {
       ))}
       {company && detail.data && (
         <Card>
-          <div className="mb-2 flex items-start justify-between gap-2">
-            <div>
-              <h2 className="text-xl font-bold">{company} 미납 명세</h2>
-              <p className="text-sm text-slate-500">출력일 {new Date().toLocaleDateString('ko-KR')}</p>
-            </div>
-            <Button tone="plain" className="no-print" onClick={close}>명세 닫기</Button>
+          <div className="mb-2">
+            <h2 className="text-xl font-bold">{company} 미납 명세</h2>
+            <p className="text-sm text-slate-500">출력일 {new Date().toLocaleDateString('ko-KR')}</p>
           </div>
+          <div className="no-print mb-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <Button tone="plain" onClick={() => window.print()}>인쇄하기</Button>
+            <Button tone="plain" onClick={() => mail.send(company, statementMail(company, rows.map((r) => ({ ...r, company }) as MailOrder)), mailWarning(rows))}>이메일 전송</Button>
+            <Button tone="plain" disabled={chosen.length === 0} onClick={editSelected}>선택거래 수정</Button>
+            <Button tone="success" disabled={chosen.length === 0} onClick={paySelected}>
+              선택거래 납입처리{chosen.length ? ` (${chosen.length}건)` : ''}
+            </Button>
+            <Button tone="plain" onClick={close}>명세닫기</Button>
+          </div>
+          <p className="no-print mb-2 text-sm text-slate-500">수정하거나 납입할 건을 체크하세요. 같은 지시서에서 나뉜 건은 함께 체크됩니다. 수정은 한 건씩 할 수 있습니다.</p>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-base">
               <thead>
@@ -397,16 +423,9 @@ function ByCompany() {
             {missingMake > 0 && <p>제작비용 미입력 {missingMake}건 (미입력은 0원으로 계산되어 있습니다)</p>}
             {unpriced > 0 && <p>단가가 설정되지 않은 {unpriced}건은 금액에서 제외되었습니다.</p>}
           </div>
-          <div className="no-print mt-4 grid grid-cols-2 gap-2">
-            <Button onClick={() => window.print()}>인쇄하기</Button>
-            <Button onClick={() => mail.send(company, statementMail(company, rows.map((r) => ({ ...r, company }) as MailOrder)), mailWarning(rows))}>이메일로 내용 전송</Button>
-            <Button tone="success" className="col-span-2" disabled={chosen.length === 0} onClick={paySelected}>
-              선택 납입{chosen.length ? ` (${chosen.length}건)` : ''}
-            </Button>
-          </div>
-          <p className="no-print mt-1 text-sm text-slate-500">납입할 건을 체크하세요. 같은 지시서에서 나뉜 건은 함께 체크됩니다.</p>
         </Card>
       )}
+      {editId !== null && <OrderDetailModal id={editId} canEdit startEditing onClose={() => { setEditId(null); setSelected(new Set()); }} />}
       {mail.prompt}
     </div>
   );

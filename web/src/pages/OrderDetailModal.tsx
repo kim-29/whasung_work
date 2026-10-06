@@ -54,6 +54,16 @@ export default function OrderDetailModal({
           submitLabel="수정 저장"
           compact
           onSubmit={async (v) => {
+            // 절단이 끝나 미납이 된 건을 제작으로 바꾸면 미납에서 빠지고 작업장으로 넘어간다
+            const toMake = o.status === 'unpaid' && o.kind === 'cut' && v.kind === 'make';
+            if (toMake && !window.confirm(`${o.company} 건을 제작으로 바꿀까요?
+
+절단은 끝난 것으로 두고(무게 유지) 작업장의 제작 작업으로 넘어갑니다.
+미납 거래내역에서는 사라지고, 제작이 끝나면 다시 미납으로 돌아옵니다.`)) return;
+            const toCut = o.status === 'making' && o.kind === 'make' && v.kind === 'cut';
+            if (toCut && !window.confirm(`${o.company} 건을 절단으로 바꿀까요?
+
+제작 작업은 취소되고 바로 미납 거래내역으로 넘어갑니다. (입력한 제작비용은 지워집니다)`)) return;
             await api(`/orders/${id}`, {
               method: 'PATCH',
               body: {
@@ -62,7 +72,9 @@ export default function OrderDetailModal({
               },
             });
             qc.invalidateQueries();
-            toast(v.actual_weight ? `수정했습니다. 무게 ${fmtKg(o.actual_weight)} → ${fmtKg(v.actual_weight)}` : '수정했습니다.');
+            if (toMake) toast('제작으로 바꿔 작업장에 넘겼습니다. 미납에서는 빠졌습니다.');
+            else if (toCut) toast('절단으로 바꿔 미납 거래내역으로 보냈습니다.');
+            else toast(v.actual_weight ? `수정했습니다. 무게 ${fmtKg(o.actual_weight)} → ${fmtKg(v.actual_weight)}` : '수정했습니다.');
             setEditing(false);
           }}
         />

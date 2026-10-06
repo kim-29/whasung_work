@@ -200,7 +200,9 @@ dashboard.get('/monthly', async (c) => {
     `SELECT o.id, o.company, o.kind, o.color, o.status, o.actual_weight, o.created_at AS ordered_at,
             o.completed_at, o.paid_at, o.drawing_key IS NOT NULL AS has_drawing, o.drawing_archived_at IS NOT NULL AS drawing_archived,
             ${PRICE_SQL} AS price_per_kg, ROUND(o.actual_weight * ${PRICE_SQL}) AS amount, o.make_cost
-       FROM orders o WHERE strftime('%Y-%m', o.created_at, '+9 hours') = ?1 ORDER BY o.id DESC`,
+       FROM orders o WHERE strftime('%Y-%m', o.created_at, '+9 hours') = ?1
+      -- 대기(진행중) → 미납 → 완납 순, 같은 상태는 지시일이 늦은 것부터
+      ORDER BY CASE o.status WHEN 'unpaid' THEN 1 WHEN 'paid' THEN 2 ELSE 0 END, o.created_at DESC, o.id DESC`,
   )
     .bind(month)
     .all();

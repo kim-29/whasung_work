@@ -40,26 +40,30 @@ function OrderCard({ o, siblings, isFront, onEdit }: { o: OrderSummary; siblings
   };
 
   return (
-    <Card className="space-y-2.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-lg font-bold">{o.company}</span>
-        <Badge color={o.status === 'pending' ? 'amber' : 'blue'}>{STATUS_LABEL[o.status]}</Badge>
-        <Badge>{KIND_LABEL[o.kind]}</Badge>
-        {o.color && <Badge color="slate">{o.color}</Badge>}
-        {siblings > 1 && <Badge color="slate">같은 지시서 {siblings}건</Badge>}
-        {o.has_unknown_bar ? <Badge color="red">미등록 바</Badge> : null}
+    <Card className="space-y-2">
+      {/* 세부내역·내용 수정 버튼은 오른쪽 위에 작게 두어 카드 높이를 줄인다 */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-lg font-bold">{o.company}</span>
+          <Badge color={o.status === 'pending' ? 'amber' : 'blue'}>{STATUS_LABEL[o.status]}</Badge>
+          <Badge>{KIND_LABEL[o.kind]}</Badge>
+          {o.color && <Badge color="slate">{o.color}</Badge>}
+          {siblings > 1 && <Badge color="slate">같은 지시서 {siblings}건</Badge>}
+          {o.has_unknown_bar ? <Badge color="red">미등록 바</Badge> : null}
+        </div>
+        <div className="flex shrink-0 gap-1.5">
+          <Button tone="plain" className="!min-h-9 !px-3 text-sm" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+            세부내역 {open ? '▲' : '▼'}
+          </Button>
+          {isFront && <Button tone="plain" className="!min-h-9 !px-3 text-sm" onClick={onEdit}>내용 수정</Button>}
+        </div>
       </div>
-      <p className="text-sm text-slate-600">
-        지시 {fmtDate(o.created_at, true)} · 예상무게 {fmtKg(o.theory_weight)}
-        {o.actual_weight != null && <> · 실제 <b>{fmtKg(o.actual_weight)}</b></>}
-      </p>
-
-      <div className="flex flex-wrap gap-2">
-        <Button tone="plain" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-          세부내역 {open ? '접기 ▲' : '보기 ▼'}
-        </Button>
-        {o.has_drawing ? <Button onClick={() => openDrawing(o.id).catch((e) => toast(e.message, 'error'))}>도면 보기</Button> : null}
-        {isFront && <Button tone="plain" onClick={onEdit}>내용 수정</Button>}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-slate-600">
+          지시 {fmtDate(o.created_at, true)} · 예상무게 {fmtKg(o.theory_weight)}
+          {o.actual_weight != null && <> · 실제 <b>{fmtKg(o.actual_weight)}</b></>}
+        </p>
+        {o.has_drawing ? <Button className="shrink-0 !min-h-9 !px-3 text-sm" onClick={() => openDrawing(o.id).catch((e) => toast(e.message, 'error'))}>도면 보기</Button> : null}
       </div>
 
       {open && (

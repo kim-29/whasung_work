@@ -179,7 +179,7 @@ export default function OrderForm({
   extra?: ReactNode;
   weightInfo?: WeightInfo;
   makeCostInfo?: MakeCostInfo;
-  /** 수정 화면용: 절단서를 한 장의 표로, 줄별 예상무게 없이 보여준다 */
+  /** 절단서를 한 장의 표로, 줄별 예상무게 없이 보여준다 (작업지시서·수정 화면) */
   compact?: boolean;
   onSubmit: (v: OrderFormValues) => Promise<void>;
 }) {
