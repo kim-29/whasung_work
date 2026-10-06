@@ -18,20 +18,23 @@ Blender 안에서 도는 코드(`blender_*.py`)와 컴퓨터에서 도는 코드
 
 ## 준비 (한 번만)
 
-업로드에는 접속 정보가 필요하다. 코드나 대화에 적지 말고 **환경변수**로만 쓴다 (값은 사용자에게 받거나,
-서버 프로젝트의 `server/.prod-secrets.json` 에서 읽는다. 값 자체를 화면에 출력하지 않는다).
+업로드에는 접속 정보(서버 주소, API 키, PIN)가 필요하다. 한 번만 내 컴퓨터의 설정 파일(`~/.whasung/config.json`)에 저장해 두면 매번 줄 필요가 없다.
 
-| 환경변수 | 용도 |
-|---|---|
-**한 번만 저장해 두면 매번 줄 필요가 없다.** 서버 주소는 코드에 기본값이 들어 있고(공개 주소라 안전), 키·PIN은 내 컴퓨터의 설정 파일(`~/.whasung/config.json`)에 저장한다. 처음 한 번, 사용자에게 확인받고 아래를 실행한다(값은 화면에 출력되지 않는다). 키·PIN은 공개 저장소에 올라가므로 코드나 스킬 파일에 절대 적지 않는다.
-`python scripts/upload_order.py setup --from-secrets-file <프로젝트>/server/.prod-secrets.json` (확인: `setup --show`)
-환경변수가 있으면 설정 파일보다 우선한다.
+- 서버 주소는 코드에 기본값이 들어 있다(공개 주소라 안전). 키·PIN은 비밀이므로 코드·스킬 파일·대화에 절대 적지 않고, 값 자체를 화면에 출력하지 않는다.
+- 처음 한 번, 사용자에게 확인받고 실행한다 (서버 프로젝트의 `server/.prod-secrets.json` 에서 읽는다):
+
+```
+python scripts/upload_order.py setup --from-secrets-file <프로젝트>/server/.prod-secrets.json
+python scripts/upload_order.py setup --show      # 저장된 항목 확인 (비밀 값은 보이지 않는다)
+```
+
+설정은 환경변수 → 설정 파일(`WHASUNG_CONFIG` 로 위치 변경) → 코드 기본값 순으로 읽는다. 환경변수가 있으면 설정 파일보다 우선한다.
 
 | 환경변수 | 용도 |
 |---|---|
 | `WHASUNG_API_URL` | 서버 주소 (기본값이 코드에 있어 보통 생략) |
 | `WHASUNG_API_KEY` | 새 작업지시 올리기 (서버의 `BLENDER_API_KEY`) |
-| `WHASUNG_PIN` | 도면 교체(replace) 에만 필요. 관리자/직원 PIN |
+| `WHASUNG_PIN` | 도면 교체(replace) 에만 필요. 직원 PIN 권장(관리자 PIN은 권한이 너무 큼) |
 
 ## 작업 순서
 
