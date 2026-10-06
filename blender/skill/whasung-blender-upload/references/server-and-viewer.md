@@ -27,7 +27,7 @@
 응답: `{"id": 10, "ids": [10], "orders": [...], "theory_weight": 80.5, "has_unknown_bar": false, "status": "pending"}`
 
 ## 2. 절단서 규칙
-- `color` 는 **화이트 / 블랙 / 실버 / 헨켈** 중 하나이고 줄마다 필요하다.
+- `color` 는 **화이트 / 블랙 / 실버 / 헨켈 / 기타** 중 하나이고 줄마다 필요하다.
 - `length_mm`, `qty` 는 **양의 정수**.
 - `kind: make`(제작) 는 색이 하나여야 한다. `cut`(절단) 은 색이 섞이면 서버가 색상별 작업으로 나누어 저장한다.
 - 예상 무게(kg) = 바의 kg/m × 길이(mm)/1000 × 수량. 설정의 바 목록에 없는 이름은 0kg 이고 `has_unknown_bar: true`.
@@ -39,7 +39,7 @@
 - 치수선은 항상 빨간색, 목록 맨 아래의 "치수선" 묶음.
 - 한 줄 컨트롤: 초기화면(시점과 숨긴 바 모두 되돌림) / Dark·White 배경 토글 / 감도(상·중·하). 선택은 브라우저에 기억된다.
 - "패널 숨기기" 버튼으로 오른쪽(좁은 화면에서는 아래쪽) 패널을 접을 수 있다.
-- 색상: 화이트 `#f1f2f3`, 블랙 `#1f2124`, 실버 `#c4cacf`, 헨켈(밝은 브론즈) `#c0a073`. 바꾸려면 프로젝트의 `blender/src/viewer.js` 의 `ORDER_COLORS` 를 고치고 `npm run build`(blender 폴더) 후 `dist/viewer-template.html` 을 이 스킬의 `assets/` 에 복사한다.
+- 색상: 화이트 `#f1f2f3`, 블랙 `#1f2124`, 실버 `#c4cacf`, 헨켈(밝은 브론즈) `#c0a073`, 기타 `#8c9f7a`. 바꾸려면 프로젝트의 `blender/src/viewer.js` 의 `ORDER_COLORS` 를 고치고 `npm run build`(blender 폴더) 후 `dist/viewer-template.html` 을 이 스킬의 `assets/` 에 복사한다.
 - 도면은 서버가 보안 설정(sandbox, 외부 통신 차단)을 붙여 내려주고, 앱에서는 10분짜리 서명 링크로 새 창에서 연다.
 
 ## 4. 문제 해결

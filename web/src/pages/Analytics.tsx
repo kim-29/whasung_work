@@ -1,19 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api, fmtKg, fmtWon, kstMonth } from '../api';
-import { BarChart, GRAPHITE, RankBars, Stat, short, YELLOW } from '../charts';
+import { BarChart, COLOR_FILL, GRAPHITE, RankBars, Stat, short, YELLOW } from '../charts';
 import { Card } from '../ui';
-import { toStock } from './money';
+import { COLORS } from '../types';
 
 interface AnalyticsData {
   mode: 'year' | 'month';
   key: string;
-  series: { label: string; orders: number; weight: number; amount: number; make_cost: number; cut_amount: number; make_amount: number; usage_m: number; usage_kg: number }[];
+  series: { label: string; orders: number; weight: number; weight_by_color: Record<string, number>; amount: number; make_cost: number; cut_amount: number; make_amount: number; usage_m: number; usage_kg: number }[];
   totals: {
     orders: number; weight: number; amount: number; make_cost: number; cut_amount: number; make_amount: number; usage_m: number; usage_kg: number;
     bar_kinds: number; paid: number; unpaid: number; make_cost_missing: number;
   };
-  bars: { bar_name: string; total_m: number; theory_kg: number }[];
+  bars: { bar_name: string; total_m: number; theory_kg: number; by_color: Record<string, number> }[];
   companies_by_count: { company: string; orders: number }[];
   companies_by_weight: { company: string; weight: number }[];
 }
@@ -33,6 +33,10 @@ export default function Analytics() {
   const period = mode === 'year' ? `${year}년` : `${month.replace('-', '년 ')}월`;
   const tickLabels = d?.series.map((s) => (mode === 'year' ? `${Number(s.label.slice(5))}월` : String(Number(s.label.slice(8))))) ?? [];
   const unit = mode === 'year' ? '월별' : '일별';
+  // 기간에 실제로 쓰인 색상만 (정해진 색상 순서대로, 그 밖의 이름은 뒤에)
+  const orderColors = (names: Set<string>) => [...COLORS.filter((c) => names.has(c)), ...[...names].filter((c) => !(COLORS as readonly string[]).includes(c))];
+  const colorsUsed = orderColors(new Set(d?.series.flatMap((s) => Object.keys(s.weight_by_color).filter((c) => s.weight_by_color[c] > 0)) ?? []));
+  const barColors = orderColors(new Set(d?.bars.flatMap((b) => Object.keys(b.by_color).filter((c) => b.by_color[c] > 0)) ?? []));
 
   return (
     <div className="space-y-3">
@@ -65,28 +69,38 @@ export default function Analytics() {
             <h2 className="text-lg font-bold">{period} 자재 사용내역 <span className="text-sm font-normal text-slate-500">(지시일 기준)</span></h2>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Stat label="총 사용 길이" value={`${d.totals.usage_m.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}m`} />
-              <Stat label="환산수량 (6m 기준)" value={toStock(d.totals.usage_m)} />
+              <Stat label="예상 무게" value={fmtKg(d.totals.usage_kg)} sub="절단서 기준" />
               <Stat label="실제 무게" value={fmtKg(d.totals.weight)} sub="무게가 입력된 작업만" />
               <Stat label="바 종류" value={`${d.totals.bar_kinds}종`} />
             </div>
             <div>
-              <p className="mb-1 text-sm font-semibold text-slate-700">{unit} 실제 무게 (kg) <span className="font-normal text-slate-500">· 작업장이 입력한 무게</span></p>
+              <p className="mb-1 text-sm font-semibold text-slate-700">{unit} 실제 무게 (kg) <span className="font-normal text-slate-500">· 작업장이 입력한 무게, 색상별</span></p>
               <BarChart
                 labels={d.series.map((s) => s.label)}
                 tickLabels={tickLabels}
-                series={[{ name: '실제 무게', color: YELLOW, values: d.series.map((s) => Math.round(s.weight * 10) / 10) }]}
+                series={colorsUsed.map((c) => ({ name: c, color: COLOR_FILL[c] ?? YELLOW, values: d.series.map((s) => Math.round((s.weight_by_color[c] ?? 0) * 10) / 10) }))}
                 format={(n) => `${Number.isInteger(n) ? n : n.toFixed(1)}kg`}
               />
             </div>
             <div>
-              <p className="mb-1 text-sm font-semibold text-slate-700">바 종류별 사용량 (많은 순)</p>
+              <p className="mb-1 text-sm font-semibold text-slate-700">바 종류별 사용량 (무게 많은 순) <span className="font-normal text-slate-500">· 예상 무게, 색상별</span></p>
               <RankBars
                 rows={d.bars.map((b) => ({
-                  name: b.bar_name, value: b.total_m, text: toStock(b.total_m),
-                  sub: `${b.total_m.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}m · 예상 ${fmtKg(b.theory_kg)}`,
+                  name: b.bar_name, value: b.theory_kg, text: fmtKg(b.theory_kg),
+                  sub: `${b.total_m.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}m · ${barColors.filter((c) => b.by_color[c] > 0).map((c) => `${c} ${fmtKg(b.by_color[c])}`).join(' · ')}`,
+                  parts: barColors.map((c) => ({ name: c, color: COLOR_FILL[c] ?? YELLOW, value: b.by_color[c] ?? 0 })),
                 }))}
                 empty="이 기간에 사용한 자재가 없습니다."
               />
+              {barColors.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-600">
+                  {barColors.map((c) => (
+                    <span key={c} className="inline-flex items-center gap-1.5">
+                      <span className="inline-block h-3 w-3 rounded-sm border border-slate-400" style={{ background: COLOR_FILL[c] ?? YELLOW }} />{c}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </Card>
 

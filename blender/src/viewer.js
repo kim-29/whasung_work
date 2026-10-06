@@ -10,7 +10,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
  *     재질 이름이 DIM 으로 시작하거나 이름이 D숫자_ 로 시작하면 '치수선'으로 묶는다.
  * (2) window.__BARS__ = [{ id, name, length, color:"#rrggbb", positions:[x,y,z,...], indices:[a,b,c,...] }]
  *
- * window.__INFO__ = { title, note, color } (선택). color 는 주문 색상(화이트/블랙/실버/헨켈)이며 모든 바를 그 색으로 칠한다.
+ * window.__INFO__ = { title, note, color } (선택). color 는 주문 색상(화이트/블랙/실버/헨켈/기타)이며 모든 바를 그 색으로 칠한다.
  * 단위는 mm(숫자 그대로).
  */
 const info = window.__INFO__ || {};
@@ -33,6 +33,7 @@ const ORDER_COLORS = {
   블랙: { fill: '#1f2124', edge: '#6a7178' },
   실버: { fill: '#c4cacf', edge: '#6a747e' },
   헨켈: { fill: '#c0a073', edge: '#6a5233' }, // 밝은 브론즈
+  기타: { fill: '#8c9f7a', edge: '#4d5c40' }, // 그 밖의 색 (연한 올리브)
 };
 const PAINT = ORDER_COLORS[info.color] || ORDER_COLORS['실버'];
 const DIM_GROUP = '치수선';

@@ -250,6 +250,9 @@ interface UserRow { id: number; name: string; role: string; active: number; mail
 const mailLabel = (u: { mail_service?: MailService | null; mail_address?: string | null }) =>
   u.mail_service ? `${MAIL_SERVICES.find((m) => m.key === u.mail_service)?.label}${u.mail_address ? ` · ${u.mail_address}` : ''}` : '메일 서비스 미설정';
 
+/** 메일 주소 모양 확인 (서비스만 고르고 주소를 비워 둔 채로는 저장하지 못하게 한다) */
+const validMail = (a: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a.trim());
+
 /** 메일 서비스 고르기 + 내 메일 주소 입력 (내 메일 카드, 관리자의 직원 메일 입력에서 함께 쓴다) */
 function MailFields({ service, address, onService, onAddress }: { service: MailService | ''; address: string; onService: (s: MailService) => void; onAddress: (a: string) => void }) {
   return (
@@ -263,7 +266,7 @@ function MailFields({ service, address, onService, onAddress }: { service: MailS
           </button>
         ))}
       </div>
-      <Field label="메일 주소 (선택 · Gmail 계정 구분에 쓰입니다)">
+      <Field label="메일 주소 (필수 · Gmail 계정 구분에도 쓰입니다)">
         <input type="email" inputMode="email" value={address} placeholder="예) me@gmail.com" onChange={(e) => onAddress(e.target.value)} />
       </Field>
     </div>
@@ -296,7 +299,7 @@ function MyMail() {
         거래내역의 "이메일로 내용 전송" 버튼을 누르면 여기서 고른 메일의 작성 페이지가 열리고, 받는 사람·제목·내용이 채워집니다. 확인하고 "보내기"만 누르면 됩니다. 보낸 메일은 내 메일함에 남습니다.
       </p>
       <MailFields service={service} address={addr} onService={setService} onAddress={setAddr} />
-      <Button className="w-full" disabled={busy || !changed || !service} onClick={save}>저장</Button>
+      <Button className="w-full" disabled={busy || !changed || !service || !validMail(addr)} onClick={save}>저장</Button>
     </Card>
   );
 }
@@ -395,7 +398,7 @@ function AdminPanel() {
           <div className="space-y-3">
             <p className="text-sm text-slate-500">이 직원이 거래 내용을 보낼 때 열 메일 서비스입니다. 직원이 설정의 "내 메일"에서 직접 바꿀 수도 있습니다.</p>
             <MailFields service={mailEdit.service} address={mailEdit.address} onService={(service) => setMailEdit({ ...mailEdit, service })} onAddress={(address) => setMailEdit({ ...mailEdit, address })} />
-            <Button className="w-full" disabled={!mailEdit.service} onClick={() => guard(async () => {
+            <Button className="w-full" disabled={!mailEdit.service || !validMail(mailEdit.address)} onClick={() => guard(async () => {
               await api(`/admin/users/${mailEdit.id}/mail`, { method: 'PUT', body: { mail_service: mailEdit.service, mail_address: mailEdit.address.trim() } });
               toast('저장했습니다.');
               setMailEdit(null);

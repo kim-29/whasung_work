@@ -63,4 +63,27 @@ describe('판매분석', () => {
     // 로그인하지 않으면 볼 수 없다
     expect((await call('/api/analytics')).status).toBe(401);
   });
+  it('색상(기타 포함)별 실제 무게와 바 종류별 예상 무게를 무게 많은 순으로 낸다', async () => {
+    const t = await login();
+    await send('POST', '/api/bars', { name: 'AC-LIGHT', kg_per_m: 1 }, t);
+    await send('POST', '/api/bars', { name: 'AC-HEAVY', kg_per_m: 5 }, t);
+    const mk = async (items: { bar_name: string; length_mm: number; qty: number; color: string }[], weight: number) => {
+      const res = await send('POST', '/api/orders', { company: '색상분석', kind: 'cut', items }, t);
+      expect(res.status).toBe(201);
+      const r = await res.json<{ id: number }>();
+      await send('POST', `/api/orders/${r.id}/weight`, { weight }, t);
+      await env.DB.prepare(`UPDATE orders SET created_at = '2033-05-10 03:00:00' WHERE id = ?1`).bind(r.id).run();
+    };
+    // 길이는 LIGHT 가 더 길지만 무게는 HEAVY 가 더 많다
+    await mk([{ bar_name: 'AC-LIGHT', length_mm: 10000, qty: 1, color: '기타' }], 7); // 10kg
+    await mk([{ bar_name: 'AC-HEAVY', length_mm: 2000, qty: 1, color: '블랙' }], 3); // 10kg
+    await mk([{ bar_name: 'AC-HEAVY', length_mm: 2000, qty: 1, color: '기타' }], 4); // 10kg
+    const m = await (await call('/api/analytics?mode=month&month=2033-05', { token: t })).json<any>();
+    expect(m.series[9].weight_by_color).toEqual({ 기타: 11, 블랙: 3 });
+    expect(m.bars.map((b: any) => b.bar_name)).toEqual(['AC-HEAVY', 'AC-LIGHT']); // 20kg > 10kg (길이는 LIGHT 가 더 길다)
+    expect(m.bars[0].by_color).toEqual({ 블랙: 10, 기타: 10 });
+    expect(m.totals.bar_kinds).toBe(2);
+    // 기타 색상의 단가도 설정할 수 있다
+    expect((await send('PUT', '/api/prices', { color: '기타', price_per_kg: 1500 }, t)).status).toBe(200);
+  });
 });

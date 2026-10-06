@@ -2,7 +2,7 @@ export type Role = 'admin' | 'staff' | 'workshop';
 export type Status = 'pending' | 'making' | 'unpaid' | 'paid';
 export type Kind = 'cut' | 'make';
 
-export const COLORS = ['화이트', '블랙', '실버', '헨켈'] as const;
+export const COLORS = ['화이트', '블랙', '실버', '헨켈', '기타'] as const;
 export type Color = (typeof COLORS)[number];
 
 /** 메일 서비스: 거래 내용을 보낼 때 이 서비스의 메일 작성 페이지를 연다 */

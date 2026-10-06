@@ -1,14 +1,14 @@
 import { z } from 'zod';
 import type { Env } from './types';
 
-export const COLORS = ['화이트', '블랙', '실버', '헨켈'] as const;
+export const COLORS = ['화이트', '블랙', '실버', '헨켈', '기타'] as const;
 export type Color = (typeof COLORS)[number];
 
 export const itemSchema = z.object({
   bar_name: z.string().min(1).max(60),
   length_mm: z.number().int().positive().max(20000),
   qty: z.number().int().positive().max(10000),
-  color: z.enum(COLORS, { errorMap: () => ({ message: '색상을 선택해 주세요. (화이트, 블랙, 실버, 헨켈)' }) }),
+  color: z.enum(COLORS, { errorMap: () => ({ message: '색상을 선택해 주세요. (화이트, 블랙, 실버, 헨켈, 기타)' }) }),
 });
 
 /** 업체명 정리: 앞뒤 공백을 지우고 가운데 연속 공백은 하나로 (같은 업체가 공백 차이로 나뉘지 않게) */

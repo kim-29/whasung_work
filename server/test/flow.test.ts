@@ -65,7 +65,9 @@ describe('PIN 로그인 · 주문 흐름', () => {
     const unpaid = await (await call('/api/dashboard/unpaid', { token: s.token })).json<{ id: number }[]>();
     expect(unpaid.map((o) => o.id)).toContain(created.id);
 
-    // 납입
+    // 납입: 제작비용(0원 포함)을 입력하기 전에는 납입할 수 없다
+    expect((await post(`/api/orders/${created.id}/pay`, {}, s.token)).status).toBe(409);
+    expect((await call(`/api/orders/${created.id}`, { method: 'PATCH', body: JSON.stringify({ make_cost: 0 }), token: s.token })).status).toBe(200);
     expect((await post(`/api/orders/${created.id}/pay`, {}, s.token)).status).toBe(200);
     expect((await post(`/api/orders/${created.id}/pay`, {}, s.token)).status).toBe(409);
   });

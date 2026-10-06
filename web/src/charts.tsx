@@ -5,6 +5,16 @@ import type { ReactNode } from 'react';
 export const YELLOW = '#eab308';
 export const GRAPHITE = '#3b4249';
 
+/** 알루미늄 색상별 그래프 색 (이름 → 색). 화이트는 흰 배경에서도 보이도록 옅은 회색에 테두리를 둔다 */
+export const COLOR_FILL: Record<string, string> = {
+  화이트: '#e9ecef',
+  블랙: '#1f2124',
+  실버: '#9aa3ab',
+  헨켈: '#c0a073',
+  기타: '#8c9f7a',
+};
+const OUTLINE = 'rgba(0,0,0,0.35)';
+
 /** 큰 숫자를 짧게: 12,000 → 1.2만, 120,000,000 → 1.2억 */
 export const short = (n: number) => {
   const a = Math.abs(n);
@@ -76,7 +86,7 @@ export function BarChart({
               {series.map((s) => {
                 const v = s.values[i] ?? 0;
                 const h = (v / max) * plotH;
-                const rect = v > 0 ? <rect key={s.name} x={x} y={y(top + v)} width={barW} height={h} fill={s.color} rx="1.5" /> : null;
+                const rect = v > 0 ? <rect key={s.name} x={x} y={y(top + v)} width={barW} height={h} fill={s.color} stroke={OUTLINE} strokeWidth="0.5" rx="1.5" /> : null;
                 top += v;
                 return rect;
               })}
@@ -91,7 +101,7 @@ export function BarChart({
         <div className="mt-1 flex flex-wrap gap-3 text-sm text-slate-600">
           {series.map((s) => (
             <span key={s.name} className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-3 w-3 rounded-sm" style={{ background: s.color }} />
+              <span className="inline-block h-3 w-3 rounded-sm border border-slate-400" style={{ background: s.color }} />
               {s.name}
             </span>
           ))}
@@ -106,6 +116,8 @@ export interface RankRow {
   value: number;
   text: string; // 막대 오른쪽에 쓰는 값
   sub?: string; // 이름 아래 보조 설명
+  /** 막대를 색상별 구간으로 나눠 그린다 (구간 값의 합 = value) */
+  parts?: { name: string; color: string; value: number }[];
 }
 
 /** 많은 순 순위 막대 (가로) */
@@ -121,7 +133,12 @@ export function RankBars({ rows, color = YELLOW, empty = '내용이 없습니다
             <span className="shrink-0 font-semibold">{r.text}</span>
           </div>
           <div className="mt-0.5 h-3 rounded-sm bg-slate-200">
-            <div className="h-3 rounded-sm" style={{ width: `${Math.max(2, (r.value / max) * 100)}%`, background: color }} />
+            <div className="flex h-3 overflow-hidden rounded-sm" style={{ width: `${Math.max(2, (r.value / max) * 100)}%`, background: r.parts ? undefined : color }}>
+              {r.parts?.filter((p) => p.value > 0).map((p) => (
+                <div key={p.name} title={`${p.name} ${p.value.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}kg`}
+                  style={{ width: `${(p.value / r.value) * 100}%`, background: p.color, boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,0.35)' }} />
+              ))}
+            </div>
           </div>
           {r.sub && <p className="mt-0.5 text-xs text-slate-500">{r.sub}</p>}
         </li>

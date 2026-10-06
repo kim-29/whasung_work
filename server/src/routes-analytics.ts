@@ -37,7 +37,7 @@ analytics.get('/', async (c) => {
 
   const q = <T>(sql: string) => c.env.DB.prepare(sql).bind(key).all<T>().then((r) => r.results);
 
-  const [orderRows, usageRows, bars, byCount, byWeight, status] = await Promise.all([
+  const [orderRows, usageRows, barColorRows, weightColorRows, byCount, byWeight, status] = await Promise.all([
     q<{ bucket: string; orders: number; weight: number; amount: number; make_cost: number; cut_amount: number; make_amount: number }>(
       `SELECT ${bucket} AS bucket, COUNT(*) AS orders, COALESCE(SUM(o.actual_weight),0) AS weight,
               COALESCE(SUM(ROUND(o.actual_weight * ${PRICE_SQL})),0) AS amount,
@@ -51,10 +51,17 @@ analytics.get('/', async (c) => {
       `SELECT ${bucket} AS bucket, SUM(w.length_mm * w.qty) / 1000.0 AS m, SUM(w.theory_weight) AS kg
          FROM work_list w JOIN orders o ON o.id = w.order_id WHERE ${inRange} GROUP BY bucket`,
     ),
-    q<{ bar_name: string; total_m: number; theory_kg: number }>(
-      `SELECT w.bar_name, SUM(w.length_mm * w.qty) / 1000.0 AS total_m, SUM(w.theory_weight) AS theory_kg
+    // 바 종류 × 색상별 사용량 (색상이 없는 옛 작업은 '기타'로 센다)
+    q<{ bar_name: string; color: string; m: number; kg: number }>(
+      `SELECT w.bar_name, COALESCE(w.color, o.color, '기타') AS color,
+              SUM(w.length_mm * w.qty) / 1000.0 AS m, SUM(w.theory_weight) AS kg
          FROM work_list w JOIN orders o ON o.id = w.order_id WHERE ${inRange}
-        GROUP BY w.bar_name ORDER BY total_m DESC, w.bar_name LIMIT 30`,
+        GROUP BY w.bar_name, COALESCE(w.color, o.color, '기타')`,
+    ),
+    // 기간 칸 × 색상별 실제 무게
+    q<{ bucket: string; color: string; weight: number }>(
+      `SELECT ${bucket} AS bucket, COALESCE(o.color, '기타') AS color, COALESCE(SUM(o.actual_weight),0) AS weight
+         FROM orders o WHERE ${inRange} GROUP BY bucket, COALESCE(o.color, '기타')`,
     ),
     q<{ company: string; orders: number }>(
       `SELECT o.company, COUNT(*) AS orders FROM orders o WHERE ${inRange}
@@ -72,6 +79,20 @@ analytics.get('/', async (c) => {
     ),
   ]);
 
+  // 바 종류별로 합치고 예상 무게가 많은 순으로 (색상별 무게도 함께)
+  const barMap = new Map<string, { bar_name: string; total_m: number; theory_kg: number; by_color: Record<string, number> }>();
+  for (const r of barColorRows) {
+    const b = barMap.get(r.bar_name) ?? { bar_name: r.bar_name, total_m: 0, theory_kg: 0, by_color: {} };
+    b.total_m += r.m;
+    b.theory_kg += r.kg;
+    b.by_color[r.color] = (b.by_color[r.color] ?? 0) + r.kg;
+    barMap.set(r.bar_name, b);
+  }
+  const allBars = [...barMap.values()].sort((a, b) => b.theory_kg - a.theory_kg || b.total_m - a.total_m || a.bar_name.localeCompare(b.bar_name));
+  const bars = allBars.slice(0, 30);
+  const weightByBucket = new Map<string, Record<string, number>>();
+  for (const r of weightColorRows) weightByBucket.set(r.bucket, { ...(weightByBucket.get(r.bucket) ?? {}), [r.color]: r.weight });
+
   const byBucketOrders = new Map(orderRows.map((r) => [r.bucket, r]));
   const byBucketUsage = new Map(usageRows.map((r) => [r.bucket, r]));
   const series = labels.map((label) => {
@@ -81,6 +102,7 @@ analytics.get('/', async (c) => {
       label,
       orders: o?.orders ?? 0,
       weight: o?.weight ?? 0,
+      weight_by_color: weightByBucket.get(label) ?? {},
       amount: o?.amount ?? 0,
       make_cost: o?.make_cost ?? 0,
       cut_amount: o?.cut_amount ?? 0,
@@ -103,7 +125,7 @@ analytics.get('/', async (c) => {
       make_amount: sum((s) => s.make_amount),
       usage_m: sum((s) => s.usage_m),
       usage_kg: sum((s) => s.usage_kg),
-      bar_kinds: bars.length,
+      bar_kinds: allBars.length,
       paid: status[0]?.paid ?? 0,
       unpaid: status[0]?.unpaid ?? 0,
       make_cost_missing: status[0]?.make_cost_missing ?? 0,

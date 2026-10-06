@@ -45,6 +45,12 @@ describe('제작비용 · 업체 · 묶음 납입 · 한국 시간', () => {
     const byCo2 = await (await call('/api/dashboard/by-company', { token: t })).json<{ company: string; make_cost_missing: number }[]>();
     expect(byCo2.find((c) => c.company === '제작비 업체')?.make_cost_missing).toBe(0);
 
+    // 제작비용이 비어 있으면 납입 처리가 거절된다 (단건·묶음 모두)
+    await send('PATCH', `/api/orders/${make}`, { make_cost: null }, t);
+    expect((await send('POST', `/api/orders/${make}/pay`, {}, t)).status).toBe(409);
+    expect((await send('POST', '/api/orders/pay-batch', { ids: [make, cut] }, t)).status).toBe(409);
+    expect(((await (await call(`/api/orders/${cut}`, { token: t })).json()) as { status: string }).status).toBe('unpaid');
+
     // 완납 후에는 제작비용도 수정할 수 없다
     await send('PATCH', `/api/orders/${make}`, { make_cost: 50000 }, t);
     expect((await send('POST', `/api/orders/${make}/pay`, {}, t)).status).toBe(200);

@@ -9,6 +9,9 @@ import type { AppEnv } from './types';
 
 export const orders = new Hono<AppEnv>();
 
+// 제작비용(0원 포함)을 입력하지 않은 제작 작업은 납입 처리할 수 없다
+const NEED_MAKE_COST = '제작비용이 입력되지 않은 제작 작업은 납입할 수 없습니다. 제작비용(없으면 0원)을 먼저 입력해 주세요.';
+
 interface OrderRow {
   id: number;
   status: 'pending' | 'making' | 'unpaid' | 'paid';
@@ -238,14 +241,15 @@ orders.post('/pay-batch', frontOnly, async (c) => {
   if (!body.success) return c.json({ error: '납입할 작업을 선택해 주세요.' }, 400);
   const ids = [...new Set(body.data.ids)];
   const { results } = await c.env.DB.prepare(
-    `SELECT id, status, company FROM orders WHERE id IN (${ids.map((_, i) => `?${i + 1}`).join(',')})`,
+    `SELECT id, status, company, kind, make_cost FROM orders WHERE id IN (${ids.map((_, i) => `?${i + 1}`).join(',')})`,
   )
     .bind(...ids)
-    .all<{ id: number; status: string; company: string }>();
+    .all<{ id: number; status: string; company: string; kind: string; make_cost: number | null }>();
   if (results.length !== ids.length) return c.json({ error: '찾을 수 없는 작업이 섞여 있습니다.' }, 404);
   if (results.some((r) => r.status !== 'unpaid')) {
     return c.json({ error: '미납이 아닌 작업이 섞여 있습니다. 목록을 새로고침해 주세요.' }, 409);
   }
+  if (results.some((r) => r.kind === 'make' && r.make_cost == null)) return c.json({ error: NEED_MAKE_COST }, 409);
   await c.env.DB.batch(
     ids.map((id) => c.env.DB.prepare(`UPDATE orders SET status = 'paid', paid_at = datetime('now') WHERE id = ?1 AND status = 'unpaid'`).bind(id)),
   );
@@ -265,6 +269,7 @@ orders.post('/:id/pay', frontOnly, async (c) => {
   const order = await getOrder(c, id);
   if (!order) return c.json({ error: '오더를 찾을 수 없습니다.' }, 404);
   if (order.status !== 'unpaid') return c.json({ error: '미납 상태의 오더만 납입 처리할 수 있습니다.' }, 409);
+  if (order.kind === 'make' && (order as { make_cost?: number | null }).make_cost == null) return c.json({ error: NEED_MAKE_COST }, 409);
   await c.env.DB.prepare(`UPDATE orders SET status = 'paid', paid_at = datetime('now') WHERE id = ?1`).bind(id).run();
   const user = c.get('user');
   await audit(c.env, user.name, 'pay', id, {});

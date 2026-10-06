@@ -6,7 +6,7 @@
         --title "NS112 창문 2000 x 1500" --out NS112_2000x1500.html
 
 - glb 는 gzip 으로 압축해서 넣는다 (파일이 1/3 수준으로 줄어 올리기·열기가 빨라진다).
-- 색상은 주문 색상(화이트/블랙/실버/헨켈)이며 도면의 모든 바를 그 색으로 칠한다. 치수선은 항상 빨간색.
+- 색상은 주문 색상(화이트/블랙/실버/헨켈/기타)이며 도면의 모든 바를 그 색으로 칠한다. 치수선은 항상 빨간색.
 """
 import argparse
 import base64
@@ -15,7 +15,7 @@ import json
 import os
 import sys
 
-COLORS = ("화이트", "블랙", "실버", "헨켈")
+COLORS = ("화이트", "블랙", "실버", "헨켈", "기타")
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_TEMPLATE = os.path.join(HERE, "..", "assets", "viewer-template.html")
 

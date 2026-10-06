@@ -34,7 +34,7 @@ import time
 import urllib.error
 import urllib.request
 
-COLORS = ("화이트", "블랙", "실버", "헨켈")
+COLORS = ("화이트", "블랙", "실버", "헨켈", "기타")
 
 # 서버 주소는 앱 화면에도 들어 있는 공개 주소라 기본값으로 둔다. 다른 서버를 쓰면 환경변수나 설정 파일로 덮어쓴다.
 DEFAULT_API_URL = "https://whasung-server.nameofwind.workers.dev"

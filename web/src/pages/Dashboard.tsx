@@ -199,13 +199,13 @@ function Unpaid() {
   const byGroup = new Map<number, UnpaidRow[]>();
   rows.forEach((r) => r.group_id != null && byGroup.set(r.group_id, [...(byGroup.get(r.group_id) ?? []), r]));
   const siblings = (r: UnpaidRow) => (r.group_id != null ? byGroup.get(r.group_id) ?? [r] : [r]);
+  // 제작비용을 입력하지 않은 제작 작업은 납입할 수 없다 (0원이라도 입력해야 한다)
+  const noCost = (r: UnpaidRow) => r.kind === 'make' && r.make_cost == null;
 
   const payRows = async (list: UnpaidRow[]) => {
     const total = list.reduce((a, r) => a + rowTotal(r), 0);
-    const missing = list.filter((r) => r.kind === 'make' && r.make_cost == null).length;
     const names = [...new Set(list.map((r) => r.company))].join(', ');
-    const msg = `${names} ${list.length}건, 합계 ${fmtWon(total)}\n납입 처리할까요? 오늘 날짜로 완납 처리됩니다.` +
-      (missing ? `\n\n⚠ 제작비용이 입력되지 않은 건이 ${missing}건 있습니다. 그대로 납입하면 이후 제작비용을 입력할 수 없습니다.` : '');
+    const msg = `${names} ${list.length}건, 합계 ${fmtWon(total)}\n납입 처리할까요? 오늘 날짜로 완납 처리됩니다.`;
     if (!window.confirm(msg)) return;
     try {
       if (list.length === 1) await api(`/orders/${list[0].id}/pay`, { body: {} });
@@ -256,9 +256,10 @@ function Unpaid() {
               <Button tone="plain" className="!min-h-9 text-sm" onClick={() => setDetail(r.id)}>세부내역</Button>
               {r.has_drawing ? <Button tone="plain" className="!min-h-9 text-sm" onClick={() => openDrawing(r.id).catch((e) => toast(e.message, 'error'))}>도면</Button> : null}
               <Button tone="plain" className="!min-h-9 text-sm" onClick={() => mail.send(r.company, orderMail(r), mailWarning([r]))}>이메일로 내용 전송</Button>
-              <span className="ml-auto flex gap-2">
-                {group.length > 1 && <Button tone="plain" className="!min-h-9 text-sm" onClick={() => payRows(group)}>같은 지시서 {group.length}건 함께 납입</Button>}
-                <Button tone="success" className="!min-h-9 text-sm" onClick={() => payRows([r])}>납입</Button>
+              <span className="ml-auto flex items-center gap-2">
+                {noCost(r) && <span className="text-sm font-semibold text-red-600">제작비용을 입력하면 납입할 수 있습니다</span>}
+                {group.length > 1 && !group.some(noCost) && <Button tone="plain" className="!min-h-9 text-sm" onClick={() => payRows(group)}>같은 지시서 {group.length}건 함께 납입</Button>}
+                {!noCost(r) && <Button tone="success" className="!min-h-9 text-sm" onClick={() => payRows([r])}>납입</Button>}
               </span>
             </div>
           </Card>
@@ -311,12 +312,13 @@ function ByCompany() {
     setSelected(next);
   };
   const chosen = rows.filter((r) => selected.has(r.id));
+  // 제작비용을 입력하지 않은 제작 작업은 납입할 수 없다 (0원이라도 입력해야 한다)
+  const chosenNoCost = chosen.filter((r) => r.kind === 'make' && r.make_cost == null).length;
 
   const paySelected = async () => {
     const total = chosen.reduce((a, r) => a + rowTotal(r), 0);
-    const missing = chosen.filter((r) => r.kind === 'make' && r.make_cost == null).length;
-    const msg = `${company} ${chosen.length}건, 합계 ${fmtWon(total)}\n선택한 건을 납입 처리할까요? 오늘 날짜로 완납 처리됩니다.` +
-      (missing ? `\n\n⚠ 제작비용이 입력되지 않은 건이 ${missing}건 있습니다. 그대로 납입하면 이후 제작비용을 입력할 수 없습니다.` : '');
+    if (chosenNoCost > 0) return toast(`제작비용이 입력되지 않은 건이 ${chosenNoCost}건 있습니다. 제작비용(없으면 0원)을 먼저 입력해 주세요.`, 'error');
+    const msg = `${company} ${chosen.length}건, 합계 ${fmtWon(total)}\n선택한 건을 납입 처리할까요? 오늘 날짜로 완납 처리됩니다.`;
     if (!window.confirm(msg)) return;
     try {
       if (chosen.length === 1) await api(`/orders/${chosen[0].id}/pay`, { body: {} });
@@ -372,7 +374,7 @@ function ByCompany() {
             <Button tone="plain" onClick={() => window.print()}>인쇄하기</Button>
             <Button tone="plain" onClick={() => mail.send(company, statementMail(company, rows.map((r) => ({ ...r, company }) as MailOrder)), mailWarning(rows))}>이메일 전송</Button>
             <Button tone="plain" disabled={chosen.length === 0} onClick={editSelected}>선택거래 수정</Button>
-            <Button tone="success" disabled={chosen.length === 0} onClick={paySelected}>
+            <Button tone="success" disabled={chosen.length === 0 || chosenNoCost > 0} onClick={paySelected}>
               선택거래 납입처리{chosen.length ? ` (${chosen.length}건)` : ''}
             </Button>
             <Button tone="plain" onClick={close}>명세닫기</Button>
@@ -420,7 +422,7 @@ function ByCompany() {
             </table>
           </div>
           <div className="mt-2 space-y-0.5 text-sm font-semibold text-red-600">
-            {missingMake > 0 && <p>제작비용 미입력 {missingMake}건 (미입력은 0원으로 계산되어 있습니다)</p>}
+            {missingMake > 0 && <p>제작비용 미입력 {missingMake}건 (0원으로 계산되어 있습니다). 제작비용을 입력해야 납입할 수 있습니다. 미납 거래내역에서 입력하세요.</p>}
             {unpriced > 0 && <p>단가가 설정되지 않은 {unpriced}건은 금액에서 제외되었습니다.</p>}
           </div>
         </Card>
