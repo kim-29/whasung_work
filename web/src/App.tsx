@@ -4,7 +4,7 @@ import Analytics from './pages/Analytics';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import NewOrder from './pages/NewOrder';
-import Settings from './pages/Settings';
+import Settings, { BarsPage, CompaniesPage } from './pages/Settings';
 import WorkList from './pages/WorkList';
 import { useRealtime } from './realtime';
 
@@ -41,7 +41,7 @@ function Shell() {
                 <NavLink
                   key={t.to}
                   to={t.to}
-                  end
+                  end={t.to !== '/settings'}
                   className={({ isActive }) =>
                     `cursor-pointer whitespace-nowrap border-b-4 px-0 pb-2.5 pt-2 text-center text-[13px] font-semibold tracking-tight sm:px-4 sm:text-base sm:tracking-normal ${
                       isActive ? 'border-[#facc15] text-white' : 'border-white text-slate-300 hover:text-white'
@@ -65,6 +65,8 @@ function Shell() {
           {isFront && <Route path="/analytics" element={<Analytics />} />}
           <Route path="/work" element={<WorkList />} />
           {isFront && <Route path="/settings" element={<Settings />} />}
+          {isFront && <Route path="/settings/companies" element={<CompaniesPage />} />}
+          {isFront && <Route path="/settings/bars" element={<BarsPage />} />}
           <Route path="*" element={<Navigate to={isFront ? '/dashboard' : '/work'} replace />} />
         </Routes>
       </main>

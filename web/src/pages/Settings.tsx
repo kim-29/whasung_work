@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { api, fmtDate } from '../api';
 import { useAuth } from '../auth';
 import { PushCard } from '../push';
@@ -12,18 +13,53 @@ export default function Settings() {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold">설정</h1>
+      <Card className="divide-y divide-slate-200 !p-0">
+        <MenuLink to="/settings/companies" title="업체 관리" sub="거래 업체의 이름·전화·이메일" />
+        <MenuLink to="/settings/bars" title="바(자재) 목록" sub="바 이름과 1미터당 무게(kg/m)" />
+      </Card>
       <PushCard />
       <Prices />
-      <Companies />
       {user!.role === 'admin' && <AdminPanel />}
       <Card className="flex items-center justify-between">
         <span className="text-base">{user!.name}님으로 로그인됨</span>
         <Button tone="plain" onClick={() => window.confirm('이 기기에서 로그아웃할까요?') && logout()}>로그아웃</Button>
       </Card>
-      {/* 바(자재) 목록은 가장 아래 */}
-      <Bars />
     </div>
   );
+}
+
+/** 설정 안의 하위 메뉴 한 줄 (누르면 별도 페이지로 이동) */
+function MenuLink({ to, title, sub }: { to: string; title: string; sub: string }) {
+  return (
+    <Link to={to} className="flex min-h-14 items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50">
+      <span>
+        <span className="block text-base font-bold">{title}</span>
+        <span className="block text-sm text-slate-500">{sub}</span>
+      </span>
+      <span aria-hidden className="text-2xl leading-none text-slate-400">›</span>
+    </Link>
+  );
+}
+
+/** 설정 하위 페이지의 머리 (설정으로 돌아가기) */
+function SubPage({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Link to="/settings" className="rounded px-2 py-1 text-base font-semibold text-slate-600 hover:bg-slate-200">‹ 설정</Link>
+        <h1 className="text-xl font-bold">{title}</h1>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+export function CompaniesPage() {
+  return <SubPage title="업체 관리"><Companies /></SubPage>;
+}
+
+export function BarsPage() {
+  return <SubPage title="바(자재) 목록"><Bars /></SubPage>;
 }
 
 /** 색상별 kg당 단가. 바꾸면 그 시점 이후에 지시되는 작업부터 새 단가가 적용된다. */
