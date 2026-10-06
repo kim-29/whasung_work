@@ -8,15 +8,30 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; font-family: system-ui, 'Malgun Gothic', sans-serif; font-size: 18px; }
   #app { display: flex; height: 100%; }
-  #view { flex: 1; min-width: 0; touch-action: none; }
+  #view { flex: 1; min-width: 0; touch-action: none; position: relative; }
+  #toggle { position: absolute; top: 8px; right: 8px; z-index: 5; min-height: 40px; background: rgba(255,255,255,.92); }
+  #panel[hidden] { display: none; }
   #panel { width: 300px; max-width: 45vw; overflow-y: auto; background: #fff; border-left: 2px solid #d5dbe2; padding: 12px; }
   h1 { font-size: 1.1rem; margin: 0 0 4px; }
   #note { color: #556; font-size: .85rem; margin: 0 0 10px; }
   button { min-height: 44px; border: 2px solid #c5ced8; border-radius: 10px; background: #fff; font-size: .9rem; font-weight: 700; padding: 0 10px; }
-  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-  .row { display: flex; align-items: center; gap: 10px; min-height: 48px; border-bottom: 1px solid #e5e9ee; font-size: .9rem; }
-  .row input { width: 24px; height: 24px; flex: none; }
-  #help { color: #667; font-size: .75rem; margin-top: 12px; }
+  /* 초기화면 · Dark/White · 움직임 목록을 항상 한 줄에 놓는다 */
+  .btns { display: flex; gap: 6px; flex-wrap: nowrap; margin-bottom: 10px; }
+  .btns > * { flex: 1 1 0; min-width: 0; min-height: 44px; font-size: .85rem; padding: 0 4px; white-space: nowrap; }
+  .btns select { border: 2px solid #c5ced8; border-radius: 10px; background: #fff; font-weight: 700; cursor: pointer; }
+  .row { display: flex; align-items: center; gap: 10px; min-height: 48px; border-bottom: 1px solid #e5e9ee; font-size: .9rem; cursor: pointer; }
+  .row input { width: 24px; height: 24px; flex: none; cursor: pointer; }
+  button { cursor: pointer; }
+  .head { background: #f1f3f5; font-weight: 700; border-top: 2px solid #d5dbe2; }
+  .head .lbl { display: flex; align-items: center; gap: 10px; flex: 1; min-height: 48px; cursor: pointer; }
+  .head .exp { min-height: 36px; font-size: .75rem; padding: 0 8px; margin: 0 4px 0 0; }
+  .item { padding-left: 22px; font-size: .85rem; font-weight: 400; }
+  .item:hover { background: #fff4e8; }
+  .sub[hidden] { display: none; }
+  .sens-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: .9rem; font-weight: 700; margin-bottom: 10px; }
+  .sens-row select {
+    min-width: 7.5em; min-height: 40px; border: 2px solid #c5ced8; border-radius: 10px; background: #fff; font-size: .9rem; padding: 0 8px; cursor: pointer; }
+  #help { color: #667; font-size: .75rem; margin: 0 0 10px; }
   @media (max-width: 700px) {
     #app { flex-direction: column; }
     #panel { width: 100%; max-width: none; height: 38%; border-left: 0; border-top: 2px solid #d5dbe2; }
@@ -25,20 +40,24 @@
 </head>
 <body>
 <div id="app">
-  <div id="view"></div>
+  <div id="view"><button id="toggle" type="button">패널 숨기기 ▶</button></div>
   <aside id="panel">
     <h1 id="title"></h1>
     <p id="note"></p>
     <div class="btns">
-      <button id="all">모두 보이기</button>
-      <button id="none">모두 숨기기</button>
-      <button id="home">처음 시점</button>
+      <button id="home" type="button">초기화면</button>
+      <button id="bg" type="button">Dark</button>
+      <select id="sens" title="조작 감도">
+        <option value="fast">감도(상)</option>
+        <option value="normal">감도(중)</option>
+        <option value="slow">감도(하)</option>
+      </select>
     </div>
-    <div id="list"></div>
     <p id="help">돌리기: 한 손가락/왼쪽 버튼 · 확대/축소: 두 손가락 벌리기/휠 · 이동: 두 손가락 끌기/오른쪽 버튼</p>
+    <div id="list"></div>
   </aside>
 </div>
-<script>window.__BARS__ = /*__BARS__*/[]; window.__INFO__ = /*__INFO__*/{};</script>
+<script>window.__GLB__ = /*__GLB__*/null; window.__BARS__ = /*__BARS__*/[]; window.__INFO__ = /*__INFO__*/{};</script>
 <script>/*__VIEWER_BUNDLE__*/</script>
 </body>
 </html>

@@ -89,7 +89,13 @@ def send_order(company, kind, items, bars=None, content="", request_note="", tit
         body["drawing_html"] = build_drawing_html(bars, {"title": title or company})
     req = urllib.request.Request(
         api_url + "/api/ingest/blender", data=json.dumps(body).encode("utf-8"), method="POST",
-        headers={"Content-Type": "application/json", "X-API-Key": api_key},
+        headers={
+            "Content-Type": "application/json",
+            "X-API-Key": api_key,
+            # Cloudflare 가 파이썬 기본 User-Agent(Python-urllib)를 봇으로 보고 403 "error code: 1010" 으로 막는다.
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) whasung-send-order",
+            "Accept": "application/json",
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
