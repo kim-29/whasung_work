@@ -9,9 +9,9 @@ import WorkList from './pages/WorkList';
 import { useRealtime } from './realtime';
 
 const TABS = [
-  { to: '/new', label: '작업지시서' },
-  { to: '/work', label: '작업목록' },
   { to: '/dashboard', label: '대시보드' },
+  { to: '/work', label: '작업목록' },
+  { to: '/new', label: '작업지시서' },
   { to: '/analytics', label: '판매분석' },
   { to: '/settings', label: '설정' },
 ];
