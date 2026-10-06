@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { api, fmtDate, fmtKg, fmtWon, kstMonth, kstToday } from '../api';
 import { useAuth } from '../auth';
 import { KIND_LABEL, STATUS_LABEL, type Color, type Kind, type Status } from '../types';
-import { Badge, Button, Card, Field, useToast } from '../ui';
+import { Badge, Button, Card, Field, TrashIcon, useToast } from '../ui';
 import { orderMail, statementMail, useCompanyMail, type MailOrder } from '../mail';
 import { MakeCostBox, PriceLine, toStock, totalOf } from './money';
 import OrderDetailModal, { openDrawing } from './OrderDetailModal';
@@ -50,14 +50,6 @@ const mailWarning = (rows: { kind: Kind; make_cost: number | null; amount: numbe
 const Th = ({ children, right }: { children?: React.ReactNode; right?: boolean }) => (
   <th className={`whitespace-nowrap py-2 pr-2 font-semibold ${right ? 'text-right' : ''}`}>{children}</th>
 );
-
-function TrashIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" />
-    </svg>
-  );
-}
 
 // ---------------------------------------------------------------- 월간 거래내역
 function Monthly() {

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, fmtKg, fmtWon } from '../api';
 import { COLORS, KIND_LABEL, type Bar, type Color, type ColorPrice, type Company, type Kind, type OrderItem } from '../types';
-import { Button, Card, Field } from '../ui';
+import { Button, Card, Field, TrashIcon } from '../ui';
 
 export interface OrderFormValues {
   company: string;
@@ -315,8 +315,8 @@ export default function OrderForm({
                     <td className="py-1.5 text-right">
                       {items.length > 1 && (
                         <button type="button" aria-label="줄 삭제" title="줄 삭제"
-                          className="h-9 w-9 rounded text-xl leading-none text-slate-500 hover:bg-slate-200 hover:text-slate-900"
-                          onClick={() => setItems((a) => a.filter((_, x) => x !== i))}>×</button>
+                          className="inline-flex h-9 w-9 items-center justify-center rounded text-slate-500 hover:bg-red-100 hover:text-red-700"
+                          onClick={() => setItems((a) => a.filter((_, x) => x !== i))}><TrashIcon /></button>
                       )}
                     </td>
                   </tr>
