@@ -38,9 +38,13 @@ describe('판매분석', () => {
     expect(y31.series[2]).toMatchObject({ label: '2031-03', orders: 2, usage_m: 12, weight: 20 });
     expect(y31.totals.amount).toBe(20000); // 10kg × 1000 × 2건
     expect(y31.totals.make_cost).toBe(0);
+    // 2031년은 절단 2건만: 절단 금액 = 판매금액, 제작 금액 0
+    expect(y31.totals).toMatchObject({ cut_amount: 20000, make_amount: 0 });
 
     const y32 = await (await call('/api/analytics?mode=year&year=2032', { token: t })).json<any>();
     expect(y32.series[0]).toMatchObject({ label: '2032-01', orders: 1, usage_m: 12, make_cost: 50000, amount: 10000 });
+    // 제작 금액 = 판매금액 10,000 + 제작비용 50,000
+    expect(y32.series[0]).toMatchObject({ cut_amount: 0, make_amount: 60000 });
 
     // 월간은 일별 칸이 그 달의 날수만큼 나온다
     const m = await (await call('/api/analytics?mode=month&month=2031-03', { token: t })).json<any>();

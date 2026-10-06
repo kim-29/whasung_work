@@ -3,22 +3,20 @@ import { useState } from 'react';
 import { api, fmtKg, fmtWon, kstMonth } from '../api';
 import { BarChart, GRAPHITE, RankBars, Stat, short, YELLOW } from '../charts';
 import { Card } from '../ui';
-import { STOCK_LENGTH_M, toStock } from './money';
+import { toStock } from './money';
 
 interface AnalyticsData {
   mode: 'year' | 'month';
   key: string;
-  series: { label: string; orders: number; weight: number; amount: number; make_cost: number; usage_m: number; usage_kg: number }[];
+  series: { label: string; orders: number; weight: number; amount: number; make_cost: number; cut_amount: number; make_amount: number; usage_m: number; usage_kg: number }[];
   totals: {
-    orders: number; weight: number; amount: number; make_cost: number; usage_m: number; usage_kg: number;
+    orders: number; weight: number; amount: number; make_cost: number; cut_amount: number; make_amount: number; usage_m: number; usage_kg: number;
     bar_kinds: number; paid: number; unpaid: number; make_cost_missing: number;
   };
   bars: { bar_name: string; total_m: number; theory_kg: number }[];
   companies_by_count: { company: string; orders: number }[];
   companies_by_weight: { company: string; weight: number }[];
 }
-
-const bons = (m: number) => m / STOCK_LENGTH_M;
 
 export default function Analytics() {
   const [mode, setMode] = useState<'year' | 'month'>('month');
@@ -68,16 +66,16 @@ export default function Analytics() {
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Stat label="총 사용 길이" value={`${d.totals.usage_m.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}m`} />
               <Stat label="환산수량 (6m 기준)" value={toStock(d.totals.usage_m)} />
-              <Stat label="예상 무게" value={fmtKg(d.totals.usage_kg)} />
+              <Stat label="실제 무게" value={fmtKg(d.totals.weight)} sub="무게가 입력된 작업만" />
               <Stat label="바 종류" value={`${d.totals.bar_kinds}종`} />
             </div>
             <div>
-              <p className="mb-1 text-sm font-semibold text-slate-700">{unit} 환산수량 (본)</p>
+              <p className="mb-1 text-sm font-semibold text-slate-700">{unit} 실제 무게 (kg) <span className="font-normal text-slate-500">· 작업장이 입력한 무게</span></p>
               <BarChart
                 labels={d.series.map((s) => s.label)}
                 tickLabels={tickLabels}
-                series={[{ name: '환산수량', color: YELLOW, values: d.series.map((s) => Math.round(bons(s.usage_m) * 10) / 10) }]}
-                format={(n) => (Number.isInteger(n) ? String(n) : n.toFixed(1))}
+                series={[{ name: '실제 무게', color: YELLOW, values: d.series.map((s) => Math.round(s.weight * 10) / 10) }]}
+                format={(n) => `${Number.isInteger(n) ? n : n.toFixed(1)}kg`}
               />
             </div>
             <div>
@@ -99,8 +97,8 @@ export default function Analytics() {
               <Stat label="거래 건수" value={`${d.totals.orders}건`} sub={`완납 ${d.totals.paid}건 · 미납 ${d.totals.unpaid}건`} />
               <Stat label="판매 무게" value={fmtKg(d.totals.weight)} />
               <Stat label="합계 (제작비용 포함)" value={fmtWon(d.totals.amount + d.totals.make_cost)} />
-              <Stat label="판매금액" value={fmtWon(d.totals.amount)} />
-              <Stat label="제작비용" value={fmtWon(d.totals.make_cost)} />
+              <Stat label="절단 금액" value={fmtWon(d.totals.cut_amount)} sub="절단만 한 작업" />
+              <Stat label="제작 금액" value={fmtWon(d.totals.make_amount)} sub={`제작비용 ${fmtWon(d.totals.make_cost)} 포함`} />
               <Stat label="제작비용 미입력" value={`${d.totals.make_cost_missing}건`} warn={d.totals.make_cost_missing > 0} />
             </div>
             <div>
@@ -109,8 +107,8 @@ export default function Analytics() {
                 labels={d.series.map((s) => s.label)}
                 tickLabels={tickLabels}
                 series={[
-                  { name: '판매금액', color: YELLOW, values: d.series.map((s) => s.amount) },
-                  { name: '제작비용', color: GRAPHITE, values: d.series.map((s) => s.make_cost) },
+                  { name: '절단', color: YELLOW, values: d.series.map((s) => s.cut_amount) },
+                  { name: '제작', color: GRAPHITE, values: d.series.map((s) => s.make_amount) },
                 ]}
                 format={short}
               />

@@ -38,10 +38,13 @@ analytics.get('/', async (c) => {
   const q = <T>(sql: string) => c.env.DB.prepare(sql).bind(key).all<T>().then((r) => r.results);
 
   const [orderRows, usageRows, bars, byCount, byWeight, status] = await Promise.all([
-    q<{ bucket: string; orders: number; weight: number; amount: number; make_cost: number }>(
+    q<{ bucket: string; orders: number; weight: number; amount: number; make_cost: number; cut_amount: number; make_amount: number }>(
       `SELECT ${bucket} AS bucket, COUNT(*) AS orders, COALESCE(SUM(o.actual_weight),0) AS weight,
               COALESCE(SUM(ROUND(o.actual_weight * ${PRICE_SQL})),0) AS amount,
-              COALESCE(SUM(o.make_cost),0) AS make_cost
+              COALESCE(SUM(o.make_cost),0) AS make_cost,
+              -- 거래금액을 작업 종류로 나눈다: 절단만 = 판매금액, 제작 = 판매금액 + 제작비용
+              COALESCE(SUM(CASE WHEN o.kind = 'cut' THEN ROUND(o.actual_weight * ${PRICE_SQL}) END),0) AS cut_amount,
+              COALESCE(SUM(CASE WHEN o.kind = 'make' THEN COALESCE(ROUND(o.actual_weight * ${PRICE_SQL}),0) + COALESCE(o.make_cost,0) END),0) AS make_amount
          FROM orders o WHERE ${inRange} GROUP BY bucket`,
     ),
     q<{ bucket: string; m: number; kg: number }>(
@@ -80,6 +83,8 @@ analytics.get('/', async (c) => {
       weight: o?.weight ?? 0,
       amount: o?.amount ?? 0,
       make_cost: o?.make_cost ?? 0,
+      cut_amount: o?.cut_amount ?? 0,
+      make_amount: o?.make_amount ?? 0,
       usage_m: u?.m ?? 0,
       usage_kg: u?.kg ?? 0,
     };
@@ -94,6 +99,8 @@ analytics.get('/', async (c) => {
       weight: sum((s) => s.weight),
       amount: sum((s) => s.amount),
       make_cost: sum((s) => s.make_cost),
+      cut_amount: sum((s) => s.cut_amount),
+      make_amount: sum((s) => s.make_amount),
       usage_m: sum((s) => s.usage_m),
       usage_kg: sum((s) => s.usage_kg),
       bar_kinds: bars.length,
