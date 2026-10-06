@@ -109,24 +109,26 @@ function Monthly() {
         </Card>
       )}
       {q.data?.orders.map((o) => (
-        <Card key={o.id} className="space-y-1.5 !p-3">
-          <div className="flex flex-wrap items-center gap-2">
+        <Card key={o.id} className="space-y-1.5 !px-3 !py-2.5">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-base font-bold">{o.company}</span>
             <Badge>{KIND_LABEL[o.kind]}</Badge>
             {o.color && <Badge>{o.color}</Badge>}
             <Badge color={o.status === 'paid' ? 'green' : o.status === 'unpaid' ? 'red' : 'amber'}>{STATUS_LABEL[o.status]}</Badge>
+            <span className="ml-auto text-sm text-slate-500">
+              지시 {fmtDate(o.ordered_at)}
+              {o.completed_at && <> · 완료 {fmtDate(o.completed_at)}</>}
+              {o.paid_at && <> · 납입 {fmtDate(o.paid_at)}</>}
+            </span>
           </div>
-          <p className="text-sm text-slate-600">
-            지시 {fmtDate(o.ordered_at)}
-            {o.completed_at && <> · 완료 {fmtDate(o.completed_at)}</>}
-            {o.paid_at && <> · 납입 {fmtDate(o.paid_at)}</>}
-          </p>
-          <PriceLine weight={o.actual_weight} pricePerKg={o.price_per_kg} amount={o.amount} />
-          {o.kind === 'make' && <MakeCostBox orderId={o.id} status={o.status} makeCost={o.make_cost} />}
-          {o.actual_weight != null && (
-            <p className="text-base font-bold">합계 {fmtWon(totalOf(o.amount, o.kind === 'make' ? o.make_cost : null))}</p>
-          )}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <PriceLine weight={o.actual_weight} pricePerKg={o.price_per_kg} amount={o.amount} />
+            {o.kind === 'make' && <MakeCostBox inline orderId={o.id} status={o.status} makeCost={o.make_cost} />}
+            {o.actual_weight != null && (
+              <span className="ml-auto whitespace-nowrap text-base font-bold">합계 {fmtWon(totalOf(o.amount, o.kind === 'make' ? o.make_cost : null))}</span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
             <Button tone="plain" className="!min-h-9 text-sm" onClick={() => setDetail(o.id)}>세부내역</Button>
             {o.has_drawing ? <Button tone="plain" className="!min-h-9 text-sm" onClick={() => openDrawing(o.id).catch((e) => toast(e.message, 'error'))}>도면</Button> : null}
             {!o.has_drawing && o.drawing_archived ? <Badge>도면 보관됨</Badge> : null}
@@ -231,25 +233,27 @@ function Unpaid() {
       {rows.map((r) => {
         const group = siblings(r);
         return (
-          <Card key={r.id} className="space-y-2 !p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-lg font-bold">{r.company}</span>
+          <Card key={r.id} className="space-y-1.5 !px-3 !py-2.5">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-base font-bold">{r.company}</span>
               <Badge>{KIND_LABEL[r.kind]}</Badge>
               {r.color && <Badge>{r.color}</Badge>}
               {group.length > 1 && <Badge>같은 지시서 {group.length}건</Badge>}
               {r.has_unknown_bar ? <Badge color="red">미등록 바</Badge> : null}
+              <span className="ml-auto text-sm text-slate-500">지시 {fmtDate(r.ordered_at)} · 완료 {fmtDate(r.completed_at)}</span>
             </div>
-            <p className="text-sm text-slate-600">지시 {fmtDate(r.ordered_at)} · 완료 {fmtDate(r.completed_at)}</p>
-            <PriceLine weight={r.actual_weight} pricePerKg={r.price_per_kg} amount={r.amount} />
-            {r.kind === 'make' && <MakeCostBox orderId={r.id} status="unpaid" makeCost={r.make_cost} />}
-            <p className="text-lg font-bold">합계 {fmtWon(rowTotal(r))}</p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <PriceLine weight={r.actual_weight} pricePerKg={r.price_per_kg} amount={r.amount} />
+              {r.kind === 'make' && <MakeCostBox inline orderId={r.id} status="unpaid" makeCost={r.make_cost} />}
+              <span className="ml-auto whitespace-nowrap text-base font-bold">합계 {fmtWon(rowTotal(r))}</span>
+            </div>
             <div className="flex flex-wrap gap-2">
-              <Button tone="plain" onClick={() => setDetail(r.id)}>세부내역</Button>
-              {r.has_drawing ? <Button tone="plain" onClick={() => openDrawing(r.id).catch((e) => toast(e.message, 'error'))}>도면</Button> : null}
-              <Button tone="plain" onClick={() => mail.send(r.company, orderMail(r), mailWarning([r]))}>이메일로 내용 전송</Button>
+              <Button tone="plain" className="!min-h-9 text-sm" onClick={() => setDetail(r.id)}>세부내역</Button>
+              {r.has_drawing ? <Button tone="plain" className="!min-h-9 text-sm" onClick={() => openDrawing(r.id).catch((e) => toast(e.message, 'error'))}>도면</Button> : null}
+              <Button tone="plain" className="!min-h-9 text-sm" onClick={() => mail.send(r.company, orderMail(r), mailWarning([r]))}>이메일로 내용 전송</Button>
               <span className="ml-auto flex gap-2">
-                {group.length > 1 && <Button tone="plain" onClick={() => payRows(group)}>같은 지시서 {group.length}건 함께 납입</Button>}
-                <Button tone="success" onClick={() => payRows([r])}>납입</Button>
+                {group.length > 1 && <Button tone="plain" className="!min-h-9 text-sm" onClick={() => payRows(group)}>같은 지시서 {group.length}건 함께 납입</Button>}
+                <Button tone="success" className="!min-h-9 text-sm" onClick={() => payRows([r])}>납입</Button>
               </span>
             </div>
           </Card>

@@ -37,10 +37,13 @@ export function MakeCostBox({
   orderId,
   status,
   makeCost,
+  inline,
 }: {
   orderId: number;
   status: Status;
   makeCost: number | null | undefined;
+  /** 거래내역 카드의 금액 한 줄 안에 들어가는 작은 모양 */
+  inline?: boolean;
 }) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -49,6 +52,7 @@ export function MakeCostBox({
   useEffect(() => setV(makeCost == null ? '' : String(makeCost)), [makeCost]);
 
   if (status === 'paid') {
+    if (inline) return <span className="text-sm text-slate-700">+ 제작비용 {makeCost == null ? '미입력' : fmtWon(makeCost)}</span>;
     return <p className="text-sm text-slate-700">제작비용 {makeCost == null ? '미입력' : fmtWon(makeCost)}</p>;
   }
   const changed = v !== (makeCost == null ? '' : String(makeCost));
@@ -64,6 +68,26 @@ export function MakeCostBox({
       setBusy(false);
     }
   };
+  if (inline) {
+    return (
+      <span className="flex items-center gap-1.5">
+        <span className="whitespace-nowrap text-sm text-slate-700">+ 제작비용</span>
+        <span className="w-28">
+          <input
+            inputMode="numeric"
+            value={v}
+            placeholder="원"
+            aria-label="제작비용(원)"
+            title="제작비용(인건비+부속)"
+            className={`!min-h-9 !py-1 text-sm ${makeCost == null ? '!border-red-600' : ''}`}
+            onChange={(e) => setV(e.target.value.replace(/\D/g, ''))}
+            onKeyDown={(e) => e.key === 'Enter' && changed && !busy && save()}
+          />
+        </span>
+        {changed && <Button tone="plain" className="!min-h-9 !px-3 text-sm" disabled={busy} onClick={save}>저장</Button>}
+      </span>
+    );
+  }
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 p-2">
       <span className="text-sm font-semibold text-slate-700">제작비용(인건비+부속)</span>
