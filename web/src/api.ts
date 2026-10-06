@@ -61,3 +61,7 @@ export const fmtKg = (n: number | null | undefined) =>
 
 export const fmtWon = (n: number | null | undefined) =>
   n == null ? '단가 미설정' : `${Math.round(n).toLocaleString('ko-KR')}원`;
+// 한국 시간(UTC+9) 기준 오늘 날짜 'YYYY-MM-DD' 와 이번 달 'YYYY-MM'. 서버 집계도 한국 시간 기준이라 화면 기본값도 맞춘다.
+const kstNow = () => new Date(Date.now() + 9 * 3600_000).toISOString();
+export const kstToday = () => kstNow().slice(0, 10);
+export const kstMonth = () => kstNow().slice(0, 7);

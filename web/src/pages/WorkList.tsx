@@ -121,8 +121,8 @@ export default function WorkList() {
 
   return (
     <div className="space-y-3">
+      {!isFront && <PushCard compact />}
       <h1 className="text-xl font-bold">작업목록 <span className="text-base font-normal text-slate-500">진행 중 {list.length}건 · 위에서부터 차례로 작업</span></h1>
-      {!isFront && <PushCard />}
       {q.isLoading && <p className="text-base">불러오는 중...</p>}
       {q.isError && <p className="rounded-xl border border-red-800 bg-red-100 p-3 text-base font-semibold text-red-700">{(q.error as Error).message}</p>}
       {!q.isLoading && list.length === 0 && <p className="py-10 text-center text-lg text-slate-500">진행 중인 작업이 없습니다.</p>}

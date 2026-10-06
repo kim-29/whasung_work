@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, fmtKg, fmtWon } from '../api';
-import { COLORS, KIND_LABEL, type Bar, type Color, type ColorPrice, type Kind, type OrderItem } from '../types';
+import { COLORS, KIND_LABEL, type Bar, type Color, type ColorPrice, type Company, type Kind, type OrderItem } from '../types';
 import { Button, Card, Field } from '../ui';
 
 export interface OrderFormValues {
@@ -12,6 +12,13 @@ export interface OrderFormValues {
   manual_weight?: number;
   /** 이미 무게가 입력된 오더를 수정할 때의 실제 무게 */
   actual_weight?: number;
+  /** 제작비용(원). 수정 화면에서만 쓰며 null 은 '미입력'으로 되돌리기 */
+  make_cost?: number | null;
+}
+
+/** 수정 화면에서 제작비용을 고칠 수 있게 하는 정보 (제작 작업이고 완납 전일 때만 넘긴다) */
+export interface MakeCostInfo {
+  value: number | null;
 }
 
 /** 수정할 오더의 실제 무게와 지시일 기준 단가 (실제 무게가 있으면 예상 견적 대신 실제 무게·금액을 보여준다) */
@@ -45,6 +52,63 @@ function suggest(bars: Bar[], query: string): Bar[] {
   return scored.sort((a, b) => a.score - b.score || a.bar.name.length - b.bar.name.length).slice(0, 8).map((s) => s.bar);
 }
 
+// ---------- 업체명: 이미 등록된 업체를 자동완성으로 고른다 (없는 이름을 쓰면 새 업체로 자동 등록) ----------
+function CompanyInput({ value, companies, onChange }: { value: string; companies: Company[]; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const blurTimer = useRef<number>();
+  const list = useMemo(() => {
+    const q = norm(value);
+    const hit = companies.filter((c) => !q || norm(c.name).includes(q));
+    return hit.sort((a, b) => Number(norm(b.name).startsWith(q)) - Number(norm(a.name).startsWith(q)) || b.order_count - a.order_count).slice(0, 8);
+  }, [companies, value]);
+  const isNew = value.trim() !== '' && !companies.some((c) => norm(c.name) === norm(value));
+  const pick = (name: string) => {
+    onChange(name);
+    setOpen(false);
+  };
+  return (
+    <div className="relative">
+      <input
+        value={value}
+        placeholder="업체명 입력 또는 선택"
+        autoComplete="off"
+        onFocus={() => setOpen(true)}
+        onBlur={() => (blurTimer.current = window.setTimeout(() => setOpen(false), 150))}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+          setActive(0);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') (e.preventDefault(), setActive((a) => Math.min(a + 1, list.length - 1)));
+          else if (e.key === 'ArrowUp') (e.preventDefault(), setActive((a) => Math.max(a - 1, 0)));
+          else if (e.key === 'Enter' && open && list[active]) (e.preventDefault(), pick(list[active].name));
+          else if (e.key === 'Escape') setOpen(false);
+        }}
+      />
+      {isNew && (!open || list.length === 0) && <p className="mt-1 text-xs font-semibold text-slate-500">처음 거래하는 업체로 새로 등록됩니다.</p>}
+      {open && list.length > 0 && (
+        <ul className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-slate-500 bg-white shadow-lg">
+          {list.map((c, i) => (
+            <li
+              key={c.id}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                window.clearTimeout(blurTimer.current);
+                pick(c.name);
+              }}
+              className={`flex cursor-pointer justify-between px-3 py-3 text-base ${i === active ? 'bg-slate-200' : ''}`}
+            >
+              <span className="font-semibold">{c.name}</span>
+              <span className="text-sm text-slate-500">{c.order_count}건</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 function BarInput({ value, bars, onChange }: { value: string; bars: Bar[]; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -103,6 +167,7 @@ export default function OrderForm({
   allowManual,
   extra,
   weightInfo,
+  makeCostInfo,
   onSubmit,
 }: {
   initial?: OrderFormValues;
@@ -110,6 +175,7 @@ export default function OrderForm({
   allowManual?: boolean;
   extra?: ReactNode;
   weightInfo?: WeightInfo;
+  makeCostInfo?: MakeCostInfo;
   onSubmit: (v: OrderFormValues) => Promise<void>;
 }) {
   const bars = useQuery({ queryKey: ['bars'], queryFn: () => api<Bar[]>('/bars'), staleTime: 60_000 });
@@ -120,6 +186,8 @@ export default function OrderForm({
   const [company, setCompany] = useState(initial?.company ?? '');
   const [kind, setKind] = useState<Kind>(initial?.kind ?? 'cut');
   const [note, setNote] = useState(initial?.request_note ?? '');
+  const companies = useQuery({ queryKey: ['companies'], queryFn: () => api<Company[]>('/companies'), staleTime: 30_000 });
+  const [makeCost, setMakeCost] = useState(makeCostInfo?.value == null ? '' : String(makeCostInfo.value));
   const [makeColor, setMakeColor] = useState<Color>(initial?.items[0]?.color ?? '화이트');
   const [items, setItems] = useState<OrderItem[]>(initial?.items.length ? initial.items : [emptyItem('화이트')]);
   const [manual, setManual] = useState(false);
@@ -165,6 +233,10 @@ export default function OrderForm({
         company: company.trim(), kind, request_note: note, items: final,
         manual_weight: manual ? Number(manualWeight) : undefined,
         actual_weight: weightInfo && Number(actualWeight) !== weightInfo.actual ? Number(actualWeight) : undefined,
+        make_cost:
+          makeCostInfo && kind === 'make' && makeCost !== (makeCostInfo.value == null ? '' : String(makeCostInfo.value))
+            ? (makeCost === '' ? null : Number(makeCost))
+            : undefined,
       });
     } catch (e) {
       setError((e as Error).message);
@@ -183,7 +255,7 @@ export default function OrderForm({
     <div className="space-y-3">
       <Card className="space-y-2.5">
         <Field label="요구 업체명" inline>
-          <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="예) 한빛샷시" />
+          <CompanyInput value={company} companies={companies.data ?? []} onChange={setCompany} />
         </Field>
         <Field label="작업 종류" inline>
           <select value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
@@ -198,6 +270,11 @@ export default function OrderForm({
         <Field label="별도 요구사항" inline>
           <input value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
+        {makeCostInfo && kind === 'make' && (
+          <Field label="제작비용(원)" inline>
+            <input inputMode="numeric" value={makeCost} placeholder="인건비+부속비 합계" onChange={(e) => setMakeCost(e.target.value.replace(/\D/g, ''))} />
+          </Field>
+        )}
       </Card>
 
       <Card>

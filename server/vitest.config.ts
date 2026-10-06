@@ -5,6 +5,7 @@ export default defineWorkersConfig(async () => {
   const migrations = await readD1Migrations(path.join(__dirname, 'migrations'));
   return {
     test: {
+      testTimeout: 30000, // 일부 테스트는 시간 경과(1초 이상)를 기다린다
       setupFiles: ['./test/apply-migrations.ts'],
       poolOptions: {
         workers: {

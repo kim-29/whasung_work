@@ -47,8 +47,13 @@ export class Hub extends DurableObject<Env> {
 }
 
 export async function notify(env: Env, event: HubEvent): Promise<void> {
-  const stub = env.HUB.get(env.HUB.idFromName('main'));
-  await stub.fetch('https://hub/broadcast', { method: 'POST', body: JSON.stringify(event) });
+  // 알림은 덤이다. 실시간 알림 서버가 잠깐 끊겨도 이미 저장된 업무(작업 접수, 무게 입력, 납입 등)가 오류로 끝나면 안 된다.
+  try {
+    const stub = env.HUB.get(env.HUB.idFromName('main'));
+    await stub.fetch('https://hub/broadcast', { method: 'POST', body: JSON.stringify(event) });
+  } catch (e) {
+    console.error('realtime broadcast failed', e);
+  }
   // 화면이 꺼져 있는 기기를 위해 Web Push도 함께 보낸다 (실패해도 요청은 성공 처리)
   await sendPush(env, event.roles, { title: '화성 알루미늄', body: event.message, orderId: event.orderId }).catch(() => {});
 }

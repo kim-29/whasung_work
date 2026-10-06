@@ -52,7 +52,10 @@ orders.get('/:id', anyUser, async (c) => {
   )
     .bind(id)
     .all();
-  if (c.get('user').role === 'workshop') return c.json({ ...order, items }); // 작업장에는 금액을 보여주지 않는다
+  if (c.get('user').role === 'workshop') {
+    const { make_cost: _hidden, ...safe } = order as typeof order & { make_cost?: number | null };
+    return c.json({ ...safe, items }); // 작업장에는 금액·제작비용을 보여주지 않는다
+  }
   // 금액은 저장하지 않고, 지시일 기준 단가로 계산해서 내려준다
   const priced = await c.env.DB.prepare(
     `SELECT ${PRICE_SQL} AS price_per_kg FROM orders o WHERE o.id = ?1`,
@@ -114,14 +117,21 @@ orders.patch('/:id', frontOnly, async (c) => {
   const id = Number(c.req.param('id'));
   const body = orderBaseSchema
     .partial()
-    .extend({ actual_weight: z.number().positive().max(100000).optional() })
+    .extend({
+      actual_weight: z.number().positive().max(100000).optional(),
+      // 제작비용(원): 숫자로 입력, null 이면 '미입력'으로 되돌린다
+      make_cost: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
+    })
     .safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: body.error.issues[0].message }, 400);
   const order = await getOrder(c, id);
   if (!order) return c.json({ error: '오더를 찾을 수 없습니다.' }, 404);
   if (order.status === 'paid') return c.json({ error: '완납된 오더는 수정할 수 없습니다.' }, 409);
 
-  const { items, company, request_note, actual_weight, kind } = body.data;
+  const { items, company, request_note, actual_weight, kind, make_cost } = body.data;
+  if (make_cost != null && (kind ?? order.kind) !== 'make') {
+    return c.json({ error: '제작비용은 제작 작업에만 입력할 수 있습니다.' }, 400);
+  }
   // 오더 하나에는 색상 하나만 둘 수 있다 (색상이 다르면 새 작업지시서로 나눈다)
   if (items && new Set(items.map((i) => i.color)).size > 1) return c.json({ error: MAKE_ONE_COLOR.replace('제작 작업은', '수정할 때는') }, 400);
   await c.env.DB.prepare(
@@ -132,12 +142,20 @@ orders.patch('/:id', frontOnly, async (c) => {
   )
     .bind(company ?? null, request_note ?? null, actual_weight ?? null, kind ?? null, id)
     .run();
+  if (company) await c.env.DB.prepare(`INSERT OR IGNORE INTO companies (name) VALUES (?1)`).bind(company).run();
   if (items) await replaceItems(c.env, id, items);
+  // 제작비용: 값을 보냈으면 그대로 저장(null 은 미입력), 절단으로 바꾸면 제작비용은 지운다
+  if (kind === 'cut') {
+    await c.env.DB.prepare(`UPDATE orders SET make_cost = NULL WHERE id = ?1`).bind(id).run();
+  } else if (make_cost !== undefined) {
+    await c.env.DB.prepare(`UPDATE orders SET make_cost = ?1 WHERE id = ?2`).bind(make_cost, id).run();
+  }
   const user = c.get('user');
-  // 무게를 고친 경우 수정 전 무게도 이력에 남긴다
+  // 무게·제작비용을 고친 경우 수정 전 값도 이력에 남긴다
   await audit(c.env, user.name, 'update', id, {
     ...body.data,
     ...(actual_weight !== undefined ? { previous_weight: order.actual_weight } : {}),
+    ...(make_cost !== undefined ? { previous_make_cost: (order as { make_cost?: number | null }).make_cost ?? null } : {}),
   });
   await notify(c.env, {
     type: 'order_updated', orderId: id, company: company ?? order.company,
@@ -192,6 +210,35 @@ orders.post('/:id/complete', anyUser, async (c) => {
     message: `제작 완료: ${order.company}`, roles: ['admin', 'staff'],
   });
   return c.json({ status: 'unpaid' });
+});
+
+// 묶음 납입: 선택한 미납 작업들을 한 번에 완납 처리 (하나라도 미납이 아니면 아무것도 바꾸지 않는다)
+orders.post('/pay-batch', frontOnly, async (c) => {
+  const body = z
+    .object({ ids: z.array(z.number().int().positive()).min(1).max(100) })
+    .safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: '납입할 작업을 선택해 주세요.' }, 400);
+  const ids = [...new Set(body.data.ids)];
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, status, company FROM orders WHERE id IN (${ids.map((_, i) => `?${i + 1}`).join(',')})`,
+  )
+    .bind(...ids)
+    .all<{ id: number; status: string; company: string }>();
+  if (results.length !== ids.length) return c.json({ error: '찾을 수 없는 작업이 섞여 있습니다.' }, 404);
+  if (results.some((r) => r.status !== 'unpaid')) {
+    return c.json({ error: '미납이 아닌 작업이 섞여 있습니다. 목록을 새로고침해 주세요.' }, 409);
+  }
+  await c.env.DB.batch(
+    ids.map((id) => c.env.DB.prepare(`UPDATE orders SET status = 'paid', paid_at = datetime('now') WHERE id = ?1 AND status = 'unpaid'`).bind(id)),
+  );
+  const user = c.get('user');
+  const companies = [...new Set(results.map((r) => r.company))];
+  await audit(c.env, user.name, 'pay-batch', null, { ids, companies });
+  await notify(c.env, {
+    type: 'order_paid', orderId: ids[0], company: companies.join(', '),
+    message: `납입 완료 ${ids.length}건: ${companies.join(', ')}`, roles: ['admin', 'staff'],
+  });
+  return c.json({ paid: ids.length });
 });
 
 // 납입(완납 처리)

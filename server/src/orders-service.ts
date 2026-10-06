@@ -11,8 +11,11 @@ export const itemSchema = z.object({
   color: z.enum(COLORS, { errorMap: () => ({ message: '색상을 선택해 주세요. (화이트, 블랙, 실버, 헨켈)' }) }),
 });
 
+/** 업체명 정리: 앞뒤 공백을 지우고 가운데 연속 공백은 하나로 (같은 업체가 공백 차이로 나뉘지 않게) */
+export const normalizeCompany = (s: string) => s.replace(/\s+/g, ' ').trim();
+
 export const orderBaseSchema = z.object({
-  company: z.string().min(1, '업체명을 입력해 주세요.').max(60),
+  company: z.string().max(60).transform(normalizeCompany).pipe(z.string().min(1, '업체명을 입력해 주세요.')),
   kind: z.enum(['cut', 'make']),
   request_note: z.string().max(2000).optional().default(''),
   items: z.array(itemSchema).min(1, '절단서를 한 줄 이상 입력해 주세요.').max(300),
@@ -66,6 +69,9 @@ export async function createOrder(env: Env, input: OrderInput, opts: CreateOpts)
 
   const byColor = new Map<string, OrderInput['items']>();
   for (const it of input.items) byColor.set(it.color, [...(byColor.get(it.color) ?? []), it]);
+
+  // 처음 보는 업체명은 업체 목록에 자동 등록한다 (이메일·전화는 설정의 업체 관리에서 채운다)
+  await env.DB.prepare(`INSERT OR IGNORE INTO companies (name) VALUES (?1)`).bind(input.company).run();
 
   const done = opts.actualWeight !== undefined;
   const status = done ? 'unpaid' : 'pending';

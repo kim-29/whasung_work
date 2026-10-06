@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { api, fmtDate } from '../api';
 import { useAuth } from '../auth';
 import { PushCard } from '../push';
-import { COLORS, type Bar, type ColorPrice } from '../types';
+import { COLORS, type Bar, type ColorPrice, type Company } from '../types';
 import { Badge, Button, Card, Field, Modal, useToast } from '../ui';
 
 export default function Settings() {
@@ -13,6 +13,7 @@ export default function Settings() {
       <h1 className="text-xl font-bold">설정</h1>
       <PushCard />
       <Prices />
+      <Companies />
       {user!.role === 'admin' && <AdminPanel />}
       <Card className="flex items-center justify-between">
         <span className="text-base">{user!.name}님으로 로그인됨</span>
@@ -73,6 +74,79 @@ function Prices() {
   );
 }
 
+/** 업체 정보(이름, 전화번호, 이메일). 작업지시서에서 새 업체명을 쓰면 자동으로 여기에 등록된다. */
+function Companies() {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const q = useQuery({ queryKey: ['companies'], queryFn: () => api<Company[]>('/companies') });
+  const [edit, setEdit] = useState<{ id?: number; name: string; phone: string; email: string } | null>(null);
+  const [filter, setFilter] = useState('');
+
+  const save = async () => {
+    if (!edit) return;
+    const body = { name: edit.name, phone: edit.phone, email: edit.email };
+    const exists = q.data?.some((c) => c.id !== edit.id && c.name === edit.name.replace(/\s+/g, ' ').trim());
+    if (edit.id && exists && !window.confirm(`'${edit.name.trim()}' 은(는) 이미 있는 업체입니다.\n두 업체를 하나로 합칠까요? (작업이 모두 옮겨지며 되돌릴 수 없습니다)`)) return;
+    try {
+      const r = edit.id
+        ? await api<{ merged: boolean }>(`/companies/${edit.id}`, { method: 'PUT', body })
+        : await api<{ id: number }>('/companies', { body });
+      qc.invalidateQueries();
+      toast('merged' in r && r.merged ? '업체를 합쳤습니다.' : '저장했습니다.');
+      setEdit(null);
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  };
+  const remove = async (c: Company) => {
+    if (!window.confirm(`${c.name} 을(를) 삭제할까요?`)) return;
+    try {
+      await api(`/companies/${c.id}`, { method: 'DELETE' });
+      qc.invalidateQueries({ queryKey: ['companies'] });
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  };
+  const list = (q.data ?? []).filter((c) => !filter.trim() || c.name.includes(filter.trim()) || (c.email ?? '').includes(filter.trim()));
+
+  return (
+    <Card>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 className="text-base font-bold">업체 관리</h2>
+        <Button onClick={() => setEdit({ name: '', phone: '', email: '' })}>+ 업체 추가</Button>
+      </div>
+      <p className="mb-2 text-sm text-slate-500">
+        이메일은 거래내역을 메일로 보낼 때 쓰이고, 전화번호는 비워도 됩니다. 같은 업체가 다른 이름으로 나뉘어 있으면 이름을 같게 고쳐 하나로 합칠 수 있습니다.
+      </p>
+      {(q.data?.length ?? 0) > 6 && <input className="mb-2" placeholder="업체명·이메일로 찾기" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+      <div className="divide-y divide-slate-200">
+        {list.map((c) => (
+          <div key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
+            <span className="text-base font-semibold">{c.name}</span>
+            <span className="text-sm text-slate-500">{c.order_count}건</span>
+            <span className="min-w-0 flex-1 truncate text-sm text-slate-600">
+              {c.email ? c.email : <b className="text-red-600">이메일 없음</b>}{c.phone ? ` · ${c.phone}` : ''}
+            </span>
+            <Button tone="plain" className="!min-h-9 text-sm" onClick={() => setEdit({ id: c.id, name: c.name, phone: c.phone ?? '', email: c.email ?? '' })}>수정</Button>
+            {c.order_count === 0 && <Button tone="plain" className="!min-h-9 text-sm" onClick={() => remove(c)}>삭제</Button>}
+          </div>
+        ))}
+        {q.data?.length === 0 && <p className="py-6 text-center text-slate-500">등록된 업체가 없습니다.</p>}
+      </div>
+      {edit && (
+        <Modal title={edit.id ? '업체 수정' : '업체 추가'} onClose={() => setEdit(null)}>
+          <div className="space-y-3">
+            <Field label="업체명"><input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
+            <Field label="이메일"><input type="email" inputMode="email" value={edit.email} placeholder="예) hana@example.com" onChange={(e) => setEdit({ ...edit, email: e.target.value })} /></Field>
+            <Field label="전화번호 (선택)"><input inputMode="tel" value={edit.phone} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} /></Field>
+            {edit.id && <p className="text-sm text-slate-500">업체명을 바꾸면 이 업체의 모든 작업의 업체명도 함께 바뀝니다. 이미 있는 업체명이면 두 업체가 합쳐집니다.</p>}
+            <Button className="w-full" disabled={!edit.name.trim()} onClick={save}>저장</Button>
+          </div>
+        </Modal>
+      )}
+    </Card>
+  );
+}
 function Bars() {
   const qc = useQueryClient();
   const toast = useToast();

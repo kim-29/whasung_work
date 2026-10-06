@@ -16,7 +16,7 @@ async function registration() {
 }
 
 /** 화면이 꺼져 있어도 알림을 받는 푸시 켜기/끄기. iPhone은 홈 화면에 추가한 앱에서만 가능하다. */
-export function PushCard() {
+export function PushCard({ compact = false }: { compact?: boolean }) {
   const toast = useToast();
   const [state, setState] = useState<'checking' | 'unsupported' | 'need-install' | 'off' | 'on' | 'denied' | 'no-server-key'>('checking');
 
@@ -62,6 +62,27 @@ export function PushCard() {
   };
 
   if (state === 'checking') return null;
+
+  // 한 줄 카드: 작업목록처럼 공간이 아까운 곳에서 쓴다 (제목 · 상태 · 버튼이 한 줄)
+  if (compact) {
+    const short: Record<string, string> = {
+      'need-install': '홈 화면에 추가 후 사용',
+      unsupported: '이 브라우저는 미지원',
+      denied: '브라우저에서 알림 허용 필요',
+      'no-server-key': '서버 설정 필요',
+    };
+    return (
+      <div className="flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-3 py-2">
+        <span className="shrink-0 text-sm font-bold">알림 받기</span>
+        <span className={`min-w-0 flex-1 truncate text-sm ${state === 'on' ? 'text-emerald-700' : 'text-slate-600'}`}>
+          {state === 'on' ? '켜져 있습니다' : state === 'off' ? '화면이 꺼져도 알려 드려요' : short[state]}
+        </span>
+        {state === 'on' && <Button tone="plain" className="!min-h-9 shrink-0 !px-3 text-sm" onClick={disable}>끄기</Button>}
+        {state === 'off' && <Button className="!min-h-9 shrink-0 !px-3 text-sm" onClick={enable}>켜기</Button>}
+      </div>
+    );
+  }
+
   return (
     <Card className="space-y-2">
       <h2 className="text-base font-bold">알림 받기</h2>

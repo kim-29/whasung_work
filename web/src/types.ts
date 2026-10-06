@@ -53,6 +53,18 @@ export interface OrderItem {
 export interface OrderDetail extends OrderSummary {
   request_note: string;
   items: OrderItem[];
+  /** 제작비용(원). null 은 아직 입력하지 않음. 제작 작업에만 쓴다 (작업장에는 내려오지 않는다) */
+  make_cost?: number | null;
+  price_per_kg?: number | null;
+  amount?: number | null;
+}
+
+export interface Company {
+  id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  order_count: number;
 }
 
 export const KIND_LABEL: Record<Kind, string> = { cut: '절단', make: '제작' };

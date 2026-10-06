@@ -8,26 +8,17 @@ import WorkList from './pages/WorkList';
 import { useRealtime } from './realtime';
 
 const TABS = [
-  { to: '/', label: '대시보드' },
   { to: '/new', label: '작업지시서' },
   { to: '/work', label: '작업목록' },
+  { to: '/dashboard', label: '대시보드' },
   { to: '/settings', label: '설정' },
 ];
 
 const ROLE_LABEL = { admin: '관리자', staff: '직원', workshop: '작업장' } as const;
 
-/** 알루미늄 바 단면을 본뜬 간단한 로고 */
+/** 로고: 골드 글씨 */
 function Logo() {
-  return (
-    <span className="flex items-center gap-2 whitespace-nowrap text-lg font-bold tracking-wide text-white">
-      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-        <rect x="1" y="3" width="20" height="3.5" fill="#d5d9dd" />
-        <rect x="1" y="9.25" width="20" height="3.5" fill="#fff" />
-        <rect x="1" y="15.5" width="20" height="3.5" fill="#d5d9dd" />
-      </svg>
-      화성알루미늄
-    </span>
-  );
+  return <span className="whitespace-nowrap text-lg font-bold tracking-wide text-[#d4af37]">화성알루미늄</span>;
 }
 
 function Shell() {
@@ -51,7 +42,7 @@ function Shell() {
                   end
                   className={({ isActive }) =>
                     `cursor-pointer whitespace-nowrap border-b-4 px-1 pb-2.5 pt-2 text-center text-[15px] font-semibold sm:px-4 sm:text-base ${
-                      isActive ? 'border-orange-500 text-white' : 'border-white text-slate-300 hover:text-white'
+                      isActive ? 'border-[#d4af37] text-white' : 'border-white text-slate-300 hover:text-white'
                     }`
                   }
                 >
@@ -67,11 +58,11 @@ function Shell() {
       </header>
       <main className="p-3 sm:p-5">
         <Routes>
-          {isFront && <Route path="/" element={<Dashboard />} />}
           {isFront && <Route path="/new" element={<NewOrder />} />}
+          {isFront && <Route path="/dashboard" element={<Dashboard />} />}
           <Route path="/work" element={<WorkList />} />
           {isFront && <Route path="/settings" element={<Settings />} />}
-          <Route path="*" element={<Navigate to={isFront ? '/' : '/work'} replace />} />
+          <Route path="*" element={<Navigate to={isFront ? '/new' : '/work'} replace />} />
         </Routes>
       </main>
     </div>
