@@ -1,5 +1,5 @@
 import { SELF, env } from 'cloudflare:test';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const call = (path: string, init: RequestInit & { token?: string } = {}) => {
   const { token, ...rest } = init;
@@ -11,9 +11,6 @@ const call = (path: string, init: RequestInit & { token?: string } = {}) => {
 const send = (method: string, path: string, body: unknown, token: string) => call(path, { method, body: JSON.stringify(body), token });
 const login = async (ip: string) =>
   (await (await call('/api/auth/login', { method: 'POST', body: JSON.stringify({ pin: '123456' }), headers: { 'CF-Connecting-IP': ip } })).json<{ token: string }>()).token;
-const sha256 = async (s: string) =>
-  [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, '0')).join('');
-
 describe('데이터 보관', () => {
   it('백업·장부는 관리자만 받을 수 있고, 민감한 항목은 들어가지 않는다', async () => {
     const t = await login('7.7.1.1');
@@ -41,15 +38,15 @@ describe('데이터 보관', () => {
     expect((await call('/api/admin/backup/ledger?from=2026-1&to=x', { token: t })).status).toBe(400);
   });
 
-  it('도면 보관: 완납·기간·파일 일치를 모두 만족할 때만 서버에서 지우고, 표시는 남긴다', async () => {
+  it('도면 삭제: 완납·기간을 모두 만족할 때만 백업 없이 지우고, 표시는 남긴다. 기간 설정과 자동 실행(cron)도 같다', async () => {
     const t = await login('7.7.2.1');
     await send('POST', '/api/bars', { name: 'AR-B', kg_per_m: 1 }, t);
-    const html = '<html><body>보관 시험 도면 ✓</body></html>';
+    const html = '<html><body>삭제 시험 도면 ✓</body></html>';
     const ingest = async (colors: string[]) =>
       (await (await call('/api/ingest/blender', {
         method: 'POST',
         headers: { 'X-API-Key': 'test-key' },
-        body: JSON.stringify({ company: '보관업체', kind: 'cut', drawing_html: html, items: colors.map((color) => ({ bar_name: 'AR-B', length_mm: 1000, qty: 1, color })) }),
+        body: JSON.stringify({ company: '삭제업체', kind: 'cut', drawing_html: html, items: colors.map((color) => ({ bar_name: 'AR-B', length_mm: 1000, qty: 1, color })) }),
       })).json<{ ids: number[] }>()).ids;
     const [solo] = await ingest(['화이트']);
     const pair = await ingest(['화이트', '블랙']); // 같은 지시서에서 나뉜 두 작업은 도면 하나를 같이 쓴다
@@ -73,36 +70,37 @@ describe('데이터 보관', () => {
     await env.DB.prepare(`UPDATE orders SET paid_at = datetime('now', '-13 months') WHERE id = ?1`).bind(pair[1]).run();
     expect(await cands()).toContain(pairKey);
 
-    // 도면 파일 내려받기
-    const file = await call(`/api/admin/archive/file?key=${encodeURIComponent(key)}`, { token: t });
-    expect(await file.text()).toBe(html);
-    expect((await call('/api/admin/archive/file?key=drawing:999999', { token: t })).status).toBe(404);
-
-    const commit = (items: { key: string; sha256: string }[], months = 12) =>
-      send('POST', '/api/admin/archive/commit', { months, items }, t).then((r) => r.json<{ results: { key: string; ok: boolean; error?: string }[]; archived: number }>());
-
-    // 파일이 다르면 지우지 않는다
-    const bad = await commit([{ key, sha256: '0'.repeat(64) }]);
-    expect(bad.archived).toBe(0);
-    expect(bad.results[0].error).toContain('다릅니다');
+    // 기간 설정: 저장하면 요약에 나오고, 범위를 벗어나면 거절
+    expect((await send('PUT', '/api/admin/archive/settings', { months: 0 }, t)).status).toBe(400);
+    expect((await send('PUT', '/api/admin/archive/settings', { months: 24 }, t)).status).toBe(200);
+    expect((await (await call('/api/admin/archive/summary', { token: t })).json<{ months: number }>()).months).toBe(24);
+    // 기간이 24개월이면 13개월 된 도면은 자동 실행(cron)이 지우지 않는다
+    await SELF.scheduled({ scheduledTime: Date.now(), cron: '0 15 * * *' } as never);
+    // 자동 실행이 끝났다는 기록(마지막 실행)이 생길 때까지 기다린 뒤 확인한다
+    await vi.waitFor(async () => expect((await (await call('/api/admin/archive/summary', { token: t })).json<{ last_run: unknown }>()).last_run).not.toBeNull(), { timeout: 8000 });
     expect(await env.KV.get(key)).toBe(html);
+    // 수동 삭제에 기간을 직접 주면 그 기간이 우선한다 (24개월 → 아무것도 안 지움)
+    const none = await (await send('POST', '/api/admin/archive/purge', { months: 24 }, t)).json<{ deleted: number }>();
+    expect(none.deleted).toBe(0);
 
-    // 지금 대상이 아니면 지우지 않는다
-    expect((await commit([{ key, sha256: await sha256(html) }], 24)).archived).toBe(0);
-
-    // 정상: 서버에서 지우고, 작업에는 '보관됨' 표시를 남긴다
-    const ok = await commit([{ key, sha256: await sha256(html) }, { key: pairKey, sha256: await sha256(html) }]);
-    expect(ok.archived).toBe(2);
-    expect(await env.KV.get(key)).toBeNull();
+    // 기간을 12개월로 되돌린 뒤 자동 실행: 서버(KV)에서 지우고 작업에는 '삭제됨' 표시만 남긴다
+    await send('PUT', '/api/admin/archive/settings', { months: 12 }, t);
+    await SELF.scheduled({ scheduledTime: Date.now(), cron: '0 15 * * *' } as never);
+    await vi.waitFor(async () => expect(await env.KV.get(key)).toBeNull(), { timeout: 8000 });
     expect(await env.KV.get(pairKey)).toBeNull();
-    const after = await (await call(`/api/orders/${solo}`, { token: t })).json<{ drawing_key: string | null; drawing_archived_at: string | null; has_drawing?: number }>();
+    const after = await (await call(`/api/orders/${solo}`, { token: t })).json<{ drawing_key: string | null; drawing_archived_at: string | null }>();
     expect(after.drawing_key).toBeNull();
     expect(after.drawing_archived_at).not.toBeNull();
-    // 묶음은 두 작업 모두 표시된다
     for (const id of pair) expect((await (await call(`/api/orders/${id}`, { token: t })).json<{ drawing_archived_at: string | null }>()).drawing_archived_at).not.toBeNull();
     expect((await call(`/api/orders/${solo}/drawing-link`, { token: t })).status).toBe(404);
+    const sum = await (await call('/api/admin/archive/summary', { token: t })).json<{ last_run: { deleted: number; auto: boolean } | null }>();
+    expect(sum.last_run?.auto).toBe(true);
+    expect(sum.last_run?.deleted).toBeGreaterThanOrEqual(2);
+    // 미납이 남은 도면이나 삭제 대상이 아닌 도면은 건드리지 않는다 / 기록이 남는다
+    const logged = await env.DB.prepare(`SELECT user_name FROM audit_log WHERE action = 'purge-drawings' ORDER BY id DESC LIMIT 1`).first<{ user_name: string }>();
+    expect(logged?.user_name).toBe('자동(매일 00:00)');
 
-    // 도면을 다시 올리면 보관됨 표시가 사라진다 (복원)
+    // 도면을 다시 올리면 삭제됨 표시가 사라진다 (복원)
     expect((await call(`/api/orders/${solo}/drawing`, { method: 'PUT', body: html, token: t, headers: { 'Content-Type': 'text/html' } })).status).toBe(200);
     expect((await (await call(`/api/orders/${solo}`, { token: t })).json<{ drawing_archived_at: string | null }>()).drawing_archived_at).toBeNull();
   });

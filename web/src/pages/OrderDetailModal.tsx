@@ -129,7 +129,7 @@ export default function OrderDetailModal({
           </div>
           <div className="flex flex-wrap gap-2">
             {o.has_drawing ? <Button onClick={() => openDrawing(id).catch((e) => toast(e.message, 'error'))}>도면 보기</Button> : null}
-            {!o.has_drawing && (o as { drawing_archived_at?: string | null }).drawing_archived_at ? <Badge>도면 보관됨 ({fmtDate((o as { drawing_archived_at?: string }).drawing_archived_at)})</Badge> : null}
+            {!o.has_drawing && (o as { drawing_archived_at?: string | null }).drawing_archived_at ? <Badge>도면 삭제됨 ({fmtDate((o as { drawing_archived_at?: string }).drawing_archived_at)})</Badge> : null}
             {canEdit && o.status !== 'paid' && <Button tone="plain" onClick={() => setEditing(true)}>내용 수정</Button>}
           </div>
         </div>

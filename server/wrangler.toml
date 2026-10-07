@@ -7,6 +7,10 @@ compatibility_flags = ["nodejs_compat"]
 # 프론트(GitHub Pages) 주소. 배포 후 실제 주소로 교체 (쉼표로 여러 개 가능)
 ALLOWED_ORIGINS = "https://kim-29.github.io,http://localhost:5173"
 
+# 매일 한국 시간 00:00(= UTC 15:00)에 실행: 완납 후 설정한 기간이 지난 도면을 자동으로 지운다 (한 번에 최대 40개)
+[triggers]
+crons = ["0 15 * * *"]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "whasung-agency"

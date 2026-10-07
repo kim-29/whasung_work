@@ -4,10 +4,10 @@ import { z } from 'zod';
 import { admin, anyUser, auth, authenticateToken } from './auth';
 import { Hub } from './hub';
 import { analytics } from './routes-analytics';
-import { archive, backup } from './routes-archive';
+import { archive, backup, runScheduledPurge } from './routes-archive';
 import { drawings, orders } from './routes-orders';
 import { bars, companies, dashboard, ingest, prices } from './routes-misc';
-import type { AppEnv } from './types';
+import type { AppEnv, Env } from './types';
 
 const app = new Hono<AppEnv>();
 
@@ -72,4 +72,11 @@ app.onError((err, c) => {
 });
 
 export { Hub };
-export default app;
+
+export default {
+  fetch: app.fetch,
+  // 매일 한국 시간 00:00(UTC 15:00) 자동 실행: 완납 후 설정한 기간이 지난 도면 삭제
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(runScheduledPurge(env));
+  },
+};

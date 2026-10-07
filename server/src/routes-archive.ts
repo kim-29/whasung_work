@@ -4,7 +4,7 @@ import { adminOnly } from './auth';
 import { PRICE_SQL, audit } from './orders-service';
 import type { AppEnv } from './types';
 
-// 데이터 보관(관리자 전용): 전체 백업, 거래 장부(CSV), 오래된 도면 보관·정리.
+// 데이터 보관(관리자 전용): 전체 백업, 거래 장부(CSV), 오래된 도면 삭제(매일 00:00 KST 자동 + 수동).
 export const backup = new Hono<AppEnv>();
 backup.use('*', adminOnly);
 
@@ -20,7 +20,7 @@ backup.get('/export', async (c) => {
     {
       app: 'whasung',
       exported_at: new Date().toISOString(),
-      note: '화성 알루미늄 전체 데이터 백업. 3D 도면(HTML)은 포함되지 않는다(도면 보관 기능으로 따로 내려받는다).',
+      note: '화성 알루미늄 전체 데이터 백업. 3D 도면(HTML)은 포함되지 않는다(완납 후 기간이 지나면 자동 삭제되는 데이터라 따로 받지 않는다).',
       counts: Object.fromEntries(tables.map((t) => [t, data[t].length])),
       tables: data,
     },
@@ -77,21 +77,26 @@ backup.get('/ledger', async (c) => {
   });
 });
 
-// ---------- 오래된 도면 보관·정리 ----------
+// ---------- 오래된 도면 삭제 ----------
+// 완납 후 지정한 기간(개월)이 지난 3D 도면은 백업 없이 서버(KV)에서 지운다. 작업 기록(업체·무게·금액)은 그대로 남고
+// 작업에는 '도면 삭제됨' 표시(drawing_archived_at)만 남는다. 매일 00:00(한국 시간) 자동 실행(index.ts 의 scheduled)과 관리자의 수동 실행이 같은 함수를 쓴다.
 export const archive = new Hono<AppEnv>();
 archive.use('*', adminOnly);
 
-archive.get('/summary', async (c) => {
-  const r = await c.env.DB.prepare(
-    `SELECT COUNT(DISTINCT drawing_key) AS drawings, SUM(drawing_archived_at IS NOT NULL) AS archived_orders FROM orders`,
-  ).first<{ drawings: number; archived_orders: number | null }>();
-  return c.json({ drawings: r?.drawings ?? 0, archived_orders: r?.archived_orders ?? 0 });
-});
+const RETENTION_KEY = 'config:drawing_retention_months';
+const LAST_RUN_KEY = 'config:drawing_purge_last';
+export const DEFAULT_RETENTION_MONTHS = 12;
+/** 한 번 실행에 지우는 최대 개수 (Workers 한 번 실행의 요청 수 제한 안에서 끝내려고). 자동 실행은 매일 돌므로 남은 것은 다음 날 이어서 지운다. */
+const PURGE_BATCH = 40;
 
-const monthsOf = (v: string | undefined) => Math.min(120, Math.max(1, Math.floor(Number(v) || 12)));
+const clampMonths = (n: number) => Math.min(120, Math.max(1, Math.floor(n) || DEFAULT_RETENTION_MONTHS));
 
-// 보관 대상: 그 도면을 쓰는 작업이 모두 완납이고, 마지막 납입이 N개월보다 오래된 도면 (같은 지시서에서 나뉜 작업은 도면을 같이 쓴다)
-async function candidates(env: AppEnv['Bindings'], months: number) {
+export async function getRetentionMonths(env: AppEnv['Bindings']) {
+  return clampMonths(Number(await env.KV.get(RETENTION_KEY)));
+}
+
+// 삭제 대상: 그 도면을 쓰는 작업이 모두 완납이고, 마지막 납입이 N개월보다 오래된 도면 (같은 지시서에서 나뉜 작업은 도면을 같이 쓴다)
+async function candidates(env: AppEnv['Bindings'], months: number, limit = 300) {
   const { results } = await env.DB.prepare(
     `SELECT drawing_key AS key, GROUP_CONCAT(id) AS ids, GROUP_CONCAT(DISTINCT company) AS companies,
             GROUP_CONCAT(DISTINCT color) AS colors, GROUP_CONCAT(DISTINCT kind) AS kinds,
@@ -99,58 +104,78 @@ async function candidates(env: AppEnv['Bindings'], months: number) {
        FROM orders WHERE drawing_key IS NOT NULL
       GROUP BY drawing_key
      HAVING SUM(status != 'paid') = 0 AND MAX(paid_at) < datetime('now', ?1)
-      ORDER BY MIN(created_at), drawing_key LIMIT 300`,
+      ORDER BY MIN(created_at), drawing_key LIMIT ?2`,
   )
-    .bind(`-${months} months`)
+    .bind(`-${months} months`, limit)
     .all<{ key: string; ids: string; companies: string; colors: string; kinds: string; ordered: string; last_paid: string; orders: number }>();
   return results.map((r) => ({ ...r, ids: r.ids.split(',').map(Number) }));
 }
 
-archive.get('/candidates', async (c) => c.json(await candidates(c.env, monthsOf(c.req.query('months')))));
+/** 대상 도면을 최대 PURGE_BATCH 개 지운다. 작업 표시를 먼저 바꾸고(실패해도 도면은 그대로) 그다음 파일을 지운다. */
+export async function purgeOldDrawings(env: AppEnv['Bindings'], months: number, actor: string) {
+  const list = await candidates(env, months, PURGE_BATCH);
+  if (list.length) {
+    await env.DB.batch([
+      ...list.map((c) => env.DB.prepare(`UPDATE orders SET drawing_key = NULL, drawing_archived_at = datetime('now') WHERE drawing_key = ?1`).bind(c.key)),
+      env.DB.prepare(`INSERT INTO audit_log (user_name, action, order_id, detail) VALUES (?1,'purge-drawings',NULL,?2)`).bind(
+        actor,
+        JSON.stringify({ months, drawings: list.length, orders: list.flatMap((c) => c.ids) }),
+      ),
+    ]);
+    await Promise.allSettled(list.map((c) => env.KV.delete(c.key)));
+  }
+  const remaining = (await candidates(env, months, 1000)).length;
+  return { deleted: list.length, remaining };
+}
 
-// 도면 파일 하나 내려받기 (보관 대상이거나 최소한 서버에 있는 도면 키만 허용)
-archive.get('/file', async (c) => {
-  const key = c.req.query('key') ?? '';
-  const known = await c.env.DB.prepare(`SELECT 1 AS x FROM orders WHERE drawing_key = ?1 LIMIT 1`).bind(key).first();
-  if (!known) return c.json({ error: '도면을 찾을 수 없습니다.' }, 404);
-  const obj = await c.env.KV.get(key, 'stream');
-  if (!obj) return c.json({ error: '도면 파일이 서버에 없습니다.' }, 404);
-  return new Response(obj, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+/** 매일 한국 시간 00:00 자동 실행(cron). 설정된 기간을 쓰고, 결과를 마지막 실행 기록으로 남긴다. 실패해도 예외를 밖으로 던지지 않는다. */
+export async function runScheduledPurge(env: AppEnv['Bindings']) {
+  try {
+    const months = await getRetentionMonths(env);
+    const r = await purgeOldDrawings(env, months, '자동(매일 00:00)');
+    await env.KV.put(LAST_RUN_KEY, JSON.stringify({ at: new Date().toISOString(), months, deleted: r.deleted, remaining: r.remaining, auto: true }));
+    return r;
+  } catch (e) {
+    console.error('scheduled purge failed', e);
+    return null;
+  }
+}
+
+archive.get('/summary', async (c) => {
+  const r = await c.env.DB.prepare(
+    `SELECT COUNT(DISTINCT drawing_key) AS drawings, SUM(drawing_archived_at IS NOT NULL) AS archived_orders FROM orders`,
+  ).first<{ drawings: number; archived_orders: number | null }>();
+  const last = JSON.parse((await c.env.KV.get(LAST_RUN_KEY)) ?? 'null') as { at: string; months: number; deleted: number; auto?: boolean } | null;
+  return c.json({
+    drawings: r?.drawings ?? 0,
+    archived_orders: r?.archived_orders ?? 0,
+    months: await getRetentionMonths(c.env),
+    last_run: last,
+  });
 });
 
-// 정리: 관리자가 내려받은 파일의 sha256 이 서버에 있는 파일과 같을 때만, 그리고 지금도 보관 대상일 때만 서버에서 지운다.
-archive.post('/commit', async (c) => {
-  const body = z
-    .object({
-      months: z.number().int().min(1).max(120),
-      items: z.array(z.object({ key: z.string().min(1), sha256: z.string().regex(/^[0-9a-f]{64}$/) })).min(1).max(100),
-    })
-    .safeParse(await c.req.json().catch(() => null));
-  if (!body.success) return c.json({ error: '정리할 도면 정보가 올바르지 않습니다.' }, 400);
-  const eligible = new Map((await candidates(c.env, body.data.months)).map((x) => [x.key, x]));
+// 삭제 기준 기간 저장 (자동 실행도 이 값을 쓴다)
+archive.put('/settings', async (c) => {
+  const body = z.object({ months: z.number().int().min(1).max(120) }).safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: '기간은 1~120개월 사이의 숫자로 입력해 주세요.' }, 400);
+  await c.env.KV.put(RETENTION_KEY, String(body.data.months));
+  await audit(c.env, c.get('user').name, 'drawing-retention', null, { months: body.data.months });
+  return c.json({ months: body.data.months });
+});
+
+// 삭제 대상 미리 보기 (지우지 않는다)
+archive.get('/candidates', async (c) => {
+  const months = clampMonths(Number(c.req.query('months')) || (await getRetentionMonths(c.env)));
+  return c.json(await candidates(c.env, months));
+});
+
+// 지금 삭제 (관리자 수동). 한 번에 PURGE_BATCH 개까지라 남은 것이 있으면 화면이 이어서 부른다.
+archive.post('/purge', async (c) => {
+  const body = z.object({ months: z.number().int().min(1).max(120).optional() }).safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: '기간이 올바르지 않습니다.' }, 400);
+  const months = body.data.months ?? (await getRetentionMonths(c.env));
   const user = c.get('user');
-  const results: { key: string; ok: boolean; error?: string }[] = [];
-  for (const it of body.data.items) {
-    const target = eligible.get(it.key);
-    if (!target) {
-      results.push({ key: it.key, ok: false, error: '지금은 보관 대상이 아닙니다 (미납이 있거나 기간이 지나지 않음).' });
-      continue;
-    }
-    const bytes = await c.env.KV.get(it.key, 'arrayBuffer');
-    if (!bytes) {
-      results.push({ key: it.key, ok: false, error: '서버에 도면 파일이 없습니다.' });
-      continue;
-    }
-    const digest = await crypto.subtle.digest('SHA-256', bytes);
-    const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-    if (hex !== it.sha256) {
-      results.push({ key: it.key, ok: false, error: '내려받은 파일이 서버 파일과 다릅니다. 지우지 않았습니다.' });
-      continue;
-    }
-    await c.env.DB.prepare(`UPDATE orders SET drawing_key = NULL, drawing_archived_at = datetime('now') WHERE drawing_key = ?1`).bind(it.key).run();
-    await c.env.KV.delete(it.key);
-    await audit(c.env, user.name, 'archive-drawing', target.ids[0], { key: it.key, orders: target.ids, bytes: bytes.byteLength });
-    results.push({ key: it.key, ok: true });
-  }
-  return c.json({ results, archived: results.filter((r) => r.ok).length });
+  const r = await purgeOldDrawings(c.env, months, user.name);
+  await c.env.KV.put(LAST_RUN_KEY, JSON.stringify({ at: new Date().toISOString(), months, deleted: r.deleted, auto: false }));
+  return c.json({ ...r, months });
 });

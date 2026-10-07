@@ -123,7 +123,7 @@ function Monthly() {
           <div className="flex flex-wrap gap-2">
             <Button tone="plain" className="!min-h-9 text-sm" onClick={() => setDetail(o.id)}>세부내역</Button>
             {o.has_drawing ? <Button tone="plain" className="!min-h-9 text-sm" onClick={() => openDrawing(o.id).catch((e) => toast(e.message, 'error'))}>도면</Button> : null}
-            {!o.has_drawing && o.drawing_archived ? <Badge>도면 보관됨</Badge> : null}
+            {!o.has_drawing && o.drawing_archived ? <Badge>도면 삭제됨</Badge> : null}
             {(o.status === 'unpaid' || o.status === 'paid') && (
               <Button tone="plain" className="!min-h-9 text-sm" onClick={() => mail.send(o.company, orderMail(o), mailWarning([o]))}>이메일로 내용 전송</Button>
             )}
