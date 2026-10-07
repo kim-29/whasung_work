@@ -335,6 +335,15 @@ function AdminPanel() {
     await api(`/admin/users/${u.id}`, { method: 'PATCH', body: { active: !u.active } });
     refresh();
   });
+  const remove = (u: UserRow) => guard(async () => {
+    if (!window.confirm(`${u.name} 님을 삭제할까요?
+
+등록된 기기도 함께 삭제되며 되돌릴 수 없습니다.
+(이 직원이 남긴 작업 기록은 그대로 남습니다)`)) return;
+    await api(`/admin/users/${u.id}`, { method: 'DELETE' });
+    toast(`${u.name} 님을 삭제했습니다.`);
+    refresh();
+  });
   const workshopPin = () => guard(async () => {
     if (!window.confirm('작업장 PIN을 새로 발급할까요?\n지금 쓰는 작업장 기기는 모두 PIN을 다시 입력해야 합니다.')) return;
     const r = await api<{ pin: string }>('/admin/workshop-pin', { body: {} });
@@ -362,6 +371,7 @@ function AdminPanel() {
                 <span className="ml-auto flex gap-2">
                   <Button tone="plain" className="!min-h-9 text-sm" onClick={() => reissue(u)}>PIN 재발급</Button>
                   <Button tone="plain" className="!min-h-9 text-sm" onClick={() => toggle(u)}>{u.active ? '사용 중지' : '다시 사용'}</Button>
+                  {!u.active && <Button tone="plain" className="!min-h-9 text-sm text-red-700" onClick={() => remove(u)}>삭제</Button>}
                 </span>
               )}
             </div>

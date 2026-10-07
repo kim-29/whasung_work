@@ -203,6 +203,23 @@ admin.patch('/users/:id', async (c) => {
   return c.json({ ok: true });
 });
 
+/** 직원 삭제: 사용 중지된 직원(staff)만. 관리자·작업장 계정과 자기 자신은 지울 수 없다. 등록 기기·푸시 구독도 함께 지운다. */
+admin.delete('/users/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (id === c.get('user').id) return c.json({ error: '자기 자신은 삭제할 수 없습니다.' }, 400);
+  const u = await c.env.DB.prepare(`SELECT id, name, role, active FROM users WHERE id = ?1`).bind(id).first<{ id: number; name: string; role: Role; active: number }>();
+  if (!u) return c.json({ error: '직원을 찾을 수 없습니다.' }, 404);
+  if (u.role !== 'staff') return c.json({ error: '직원 계정만 삭제할 수 있습니다.' }, 400);
+  if (u.active) return c.json({ error: '먼저 "사용 중지"를 한 뒤에 삭제할 수 있습니다.' }, 409);
+  await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM push_subscriptions WHERE user_id = ?1`).bind(id),
+    c.env.DB.prepare(`DELETE FROM devices WHERE user_id = ?1`).bind(id),
+    c.env.DB.prepare(`DELETE FROM users WHERE id = ?1`).bind(id),
+    c.env.DB.prepare(`INSERT INTO audit_log (user_name, action, order_id, detail) VALUES (?1,'delete-user',NULL,?2)`).bind(c.get('user').name, JSON.stringify({ id: u.id, name: u.name })),
+  ]);
+  return c.json({ ok: true });
+});
+
 /** 작업장 PIN 발급/변경. 기존 작업장 기기는 모두 해제된다. */
 admin.post('/workshop-pin', async (c) => {
   const { pin, hash } = await issuePin(c.env);

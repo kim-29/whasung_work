@@ -189,4 +189,29 @@ describe('PIN 로그인 · 주문 흐름', () => {
     expect(await opened.text()).toBe(html);
     expect(opened.headers.get('Content-Security-Policy')).toContain('sandbox');
   });
+  it('직원 삭제: 사용 중지한 직원(staff)만, 기기도 함께 지운다. 관리자·작업장·자기 자신은 불가', async () => {
+    const a = await (await post('/api/auth/login', { pin: '123456' })).json<{ token: string }>();
+    const made = await (await post('/api/admin/users', { name: '퇴사예정직원' }, a.token)).json<{ id: number; pin: string }>();
+    const s = await (await post('/api/auth/login', { pin: made.pin })).json<{ token: string }>(); // 기기 등록
+    const del = (id: number, token = a.token) => call(`/api/admin/users/${id}`, { method: 'DELETE', token });
+    const users = async () => (await (await call('/api/admin/users', { token: a.token })).json<{ id: number; role: string }[]>());
+
+    expect((await del(made.id, s.token)).status).toBe(403); // 직원은 삭제 권한 없음
+    expect((await del(made.id)).status).toBe(409); // 사용 중인 직원은 먼저 중지해야 함
+    const admin = (await users()).find((u) => u.role === 'admin')!;
+    expect((await del(admin.id)).status).toBe(400); // 자기 자신(관리자)
+    await post('/api/admin/workshop-pin', {}, a.token);
+    const workshop = (await users()).find((u) => u.role === 'workshop')!;
+    await call(`/api/admin/users/${workshop.id}`, { method: 'PATCH', body: JSON.stringify({ active: false }), token: a.token });
+    expect((await del(workshop.id)).status).toBe(400); // 작업장 계정은 삭제 불가
+    await call(`/api/admin/users/${workshop.id}`, { method: 'PATCH', body: JSON.stringify({ active: true }), token: a.token });
+
+    await call(`/api/admin/users/${made.id}`, { method: 'PATCH', body: JSON.stringify({ active: false }), token: a.token });
+    expect((await del(made.id)).status).toBe(200);
+    expect((await users()).some((u) => u.id === made.id)).toBe(false);
+    expect((await del(made.id)).status).toBe(404);
+    // 삭제된 직원의 PIN·기기 토큰은 더는 쓸 수 없다
+    expect((await post('/api/auth/login', { pin: made.pin })).status).not.toBe(200);
+    expect((await call('/api/orders', { token: s.token })).status).toBe(401);
+  });
 });
