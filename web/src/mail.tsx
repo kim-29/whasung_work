@@ -81,14 +81,23 @@ function statementParts(rows: MailOrder[]) {
   return { lines, kg, amount, make, missing };
 }
 
-/** 카카오톡에 붙여넣을 문구: 작업 한 건 (이메일보다 짧게) */
+/** 카톡 문구 안에서 도면 링크가 들어갈 자리 표시 (문구를 복사할 때 링크 또는 빈 줄 없음으로 바뀐다) */
+const LINKS_MARK = '[[도면링크]]';
+
+/** 카카오톡에 붙여넣을 문구: 작업 한 건 */
 export function orderKakaoText(o: MailOrder): string {
   const what = `${KIND_LABEL[o.kind]}${o.color ? ` / ${o.color}` : ''}`;
   return [
-    `[${SIGNATURE}] ${o.company} 거래 내용`,
+    '안녕하세요. 화성알루미늄입니다.',
+    '아래와 같이 작업이 완료되어 거래 내용을 보내 드립니다.',
+    '',
     `■ 작업: ${what}`,
     `■ 지시일: ${fmtDate(o.ordered_at)}   완료일: ${fmtDate(o.completed_at)}${o.paid_at ? `   납입일: ${fmtDate(o.paid_at)}` : ''}`,
     ...moneyLines(o).map((l) => `■ ${l}`),
+    LINKS_MARK, // 도면 링크를 고르면 이 자리에 들어가고, 고르지 않으면 이 줄은 지워진다
+    '',
+    '감사합니다.',
+    SIGNATURE,
   ].join('\n');
 }
 
@@ -461,18 +470,23 @@ export function useKakaoText(): { send: (text: string, drawings?: DrawingRef[]) 
     }
   };
 
-  const full = open
-    ? withLinks && links
+  // 도면 링크 줄: 문구 안의 자리 표시가 있으면 그 자리에, 없으면(명세) 문구 끝에 붙인다
+  const linkLines =
+    withLinks && links
       ? [
-          open.text,
-          '',
-          ...(open.drawings.length === 1
+          ...(open?.drawings.length === 1
             ? [`■ 도면 보기: ${links[0]}`]
-            : open.drawings.map((d, i) => `■ 도면 보기(작업 ${d.id}): ${links[i]}`)),
+            : (open?.drawings ?? []).map((d, i) => `■ 도면 보기(작업 ${d.id}): ${links[i]}`)),
           `(도면 링크는 ${SHARE_DAYS}일 동안 열 수 있습니다)`,
-        ].join('\n')
-      : open.text
-    : '';
+        ]
+      : [];
+  const full = !open
+    ? ''
+    : open.text.includes(LINKS_MARK)
+      ? open.text.split('\n').flatMap((l) => (l === LINKS_MARK ? linkLines : [l])).join('\n')
+      : linkLines.length
+        ? [open.text, '', ...linkLines].join('\n')
+        : open.text;
 
   const copy = async () => {
     try {
