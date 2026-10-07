@@ -4,7 +4,7 @@ import { api, fmtDate, fmtKg, fmtWon, kstMonth, kstToday } from '../api';
 import { useAuth } from '../auth';
 import { KIND_LABEL, STATUS_LABEL, type Color, type Kind, type Status } from '../types';
 import { Badge, Button, Card, Field, TrashIcon, useToast } from '../ui';
-import { drawingRefs, orderMail, statementMail, useCompanyMail, type MailOrder } from '../mail';
+import { drawingRefs, orderKakaoText, orderMail, statementKakaoText, statementMail, useCompanyMail, useKakaoText, type MailOrder } from '../mail';
 import { MakeCostBox, PriceLine, toStock, totalOf } from './money';
 import OrderDetailModal, { openDrawing } from './OrderDetailModal';
 
@@ -58,6 +58,7 @@ function Monthly() {
   const toast = useToast();
   const isAdmin = user!.role === 'admin';
   const mail = useCompanyMail();
+  const kakao = useKakaoText();
   const [month, setMonth] = useState(kstMonth());
   const [detail, setDetail] = useState<number | null>(null);
   const q = useQuery({
@@ -127,6 +128,9 @@ function Monthly() {
             {(o.status === 'unpaid' || o.status === 'paid') && (
               <Button tone="plain" className="!min-h-9 text-sm" onClick={() => mail.send(o.company, orderMail(o), mailWarning([o]), drawingRefs([o], o.company))}>이메일로 내용 전송</Button>
             )}
+            {(o.status === 'unpaid' || o.status === 'paid') && (
+              <Button tone="plain" className="!min-h-9 text-sm" onClick={() => kakao.send(orderKakaoText(o), drawingRefs([o], o.company))}>카톡으로 내용 전송</Button>
+            )}
             {isAdmin && (
               <Button tone="plain" className="ml-auto flex !min-h-9 items-center gap-1.5 text-sm text-red-700" title="삭제" aria-label="삭제" onClick={() => remove(o)}>
                 <TrashIcon /> 삭제
@@ -138,6 +142,7 @@ function Monthly() {
       {q.data?.orders.length === 0 && <p className="py-8 text-center text-slate-500">이 달의 거래내역이 없습니다.</p>}
       {detail !== null && <OrderDetailModal id={detail} canEdit onClose={() => setDetail(null)} />}
       {mail.prompt}
+      {kakao.prompt}
     </div>
   );
 }
@@ -185,6 +190,7 @@ function Unpaid() {
   const qc = useQueryClient();
   const toast = useToast();
   const mail = useCompanyMail();
+  const kakao = useKakaoText();
   const [detail, setDetail] = useState<number | null>(null);
   const [company, setCompany] = useState('');
   const q = useQuery({ queryKey: ['unpaid'], queryFn: () => api<UnpaidRow[]>('/dashboard/unpaid') });
@@ -256,6 +262,7 @@ function Unpaid() {
               <Button tone="plain" className="!min-h-9 text-sm" onClick={() => setDetail(r.id)}>세부내역</Button>
               {r.has_drawing ? <Button tone="plain" className="!min-h-9 text-sm" onClick={() => openDrawing(r.id).catch((e) => toast(e.message, 'error'))}>도면</Button> : null}
               <Button tone="plain" className="!min-h-9 text-sm" onClick={() => mail.send(r.company, orderMail(r), mailWarning([r]), drawingRefs([r], r.company))}>이메일로 내용 전송</Button>
+              <Button tone="plain" className="!min-h-9 text-sm" onClick={() => kakao.send(orderKakaoText(r), drawingRefs([r], r.company))}>카톡으로 내용 전송</Button>
               <span className="ml-auto flex items-center gap-2">
                 {noCost(r) && <span className="text-sm font-semibold text-red-600">제작비용을 입력하면 납입할 수 있습니다</span>}
                 {group.length > 1 && !group.some(noCost) && <Button tone="plain" className="!min-h-9 text-sm" onClick={() => payRows(group)}>같은 지시서 {group.length}건 함께 납입</Button>}
@@ -267,6 +274,7 @@ function Unpaid() {
       })}
       {detail !== null && <OrderDetailModal id={detail} canEdit onClose={() => setDetail(null)} />}
       {mail.prompt}
+      {kakao.prompt}
     </div>
   );
 }
@@ -282,6 +290,7 @@ function ByCompany() {
   const qc = useQueryClient();
   const toast = useToast();
   const mail = useCompanyMail();
+  const kakao = useKakaoText();
   const [company, setCompany] = useState('');
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [editId, setEditId] = useState<number | null>(null);
@@ -370,9 +379,10 @@ function ByCompany() {
             <h2 className="text-xl font-bold">{company} 미납 명세</h2>
             <p className="text-sm text-slate-500">출력일 {new Date().toLocaleDateString('ko-KR')}</p>
           </div>
-          <div className="no-print mb-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <div className="no-print mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             <Button tone="plain" onClick={() => window.print()}>인쇄하기</Button>
             <Button tone="plain" onClick={() => mail.send(company, statementMail(company, rows.map((r) => ({ ...r, company }) as MailOrder)), mailWarning(rows), drawingRefs(rows, company))}>이메일 전송</Button>
+            <Button tone="plain" onClick={() => kakao.send(statementKakaoText(company, rows.map((r) => ({ ...r, company }) as MailOrder)), drawingRefs(rows, company))}>카톡 전송</Button>
             <Button tone="plain" disabled={chosen.length === 0} onClick={editSelected}>선택거래 수정</Button>
             <Button tone="success" disabled={chosen.length === 0 || chosenNoCost > 0} onClick={paySelected}>
               선택거래 납입처리{chosen.length ? ` (${chosen.length}건)` : ''}
@@ -429,6 +439,7 @@ function ByCompany() {
       )}
       {editId !== null && <OrderDetailModal id={editId} canEdit startEditing onClose={() => { setEditId(null); setSelected(new Set()); }} />}
       {mail.prompt}
+      {kakao.prompt}
     </div>
   );
 }

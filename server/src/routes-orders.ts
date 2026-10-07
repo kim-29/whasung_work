@@ -297,7 +297,10 @@ orders.get('/:id/drawing-link', anyUser, async (c) => {
   if (c.get('user').role === 'workshop' && !['pending', 'making'].includes(order.status)) {
     return c.json({ error: '권한이 없습니다.' }, 403);
   }
-  const exp = Math.floor(Date.now() / 1000) + 600;
+  // 기본 10분. 직원·관리자는 ?days=1~30 으로 며칠간 열 수 있는 공유 링크(카톡·메일 문구용)를 만들 수 있다.
+  const days = Math.min(30, Math.max(0, Math.floor(Number(c.req.query('days')) || 0)));
+  const ttl = days > 0 && c.get('user').role !== 'workshop' ? days * 86400 : 600;
+  const exp = Math.floor(Date.now() / 1000) + ttl;
   const sig = await hmacHex(c.env.PIN_PEPPER, `drawing.${id}.${exp}`);
   return c.json({ path: `/api/drawings/${id}?exp=${exp}&sig=${sig}` });
 });

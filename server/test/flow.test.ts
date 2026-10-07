@@ -188,6 +188,17 @@ describe('PIN 로그인 · 주문 흐름', () => {
     expect(opened.status).toBe(200);
     expect(await opened.text()).toBe(html);
     expect(opened.headers.get('Content-Security-Policy')).toContain('sandbox');
+
+    // 공유 링크: 직원·관리자는 ?days 로 며칠간 열 수 있는 링크를 만들 수 있고(최대 30일), 작업장은 항상 10분
+    const expOf = (p: string) => Number(new URL(`https://x${p}`).searchParams.get('exp')) - Math.floor(Date.now() / 1000);
+    const shared = await (await call(`/api/orders/${id}/drawing-link?days=7`, { token: admin.token })).json<{ path: string }>();
+    expect(expOf(shared.path)).toBeGreaterThan(6 * 86400);
+    expect(expOf(shared.path)).toBeLessThanOrEqual(7 * 86400);
+    expect((await call(shared.path)).status).toBe(200);
+    const capped = await (await call(`/api/orders/${id}/drawing-link?days=999`, { token: admin.token })).json<{ path: string }>();
+    expect(expOf(capped.path)).toBeLessThanOrEqual(30 * 86400);
+    const ws7 = await (await call(`/api/orders/${id}/drawing-link?days=7`, { token: w.token })).json<{ path: string }>();
+    expect(expOf(ws7.path)).toBeLessThanOrEqual(600);
   });
   it('직원 삭제: 사용 중지한 직원(staff)만, 기기도 함께 지운다. 관리자·작업장·자기 자신은 불가', async () => {
     const a = await (await post('/api/auth/login', { pin: '123456' })).json<{ token: string }>();

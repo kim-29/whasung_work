@@ -59,8 +59,8 @@ export function orderMail(o: MailOrder): { subject: string; body: string } {
   return { subject: `[${SIGNATURE}] ${o.company} 거래 내용 (${what}, ${fmtDate(o.ordered_at)})`, body };
 }
 
-/** 업체별 미납 명세 전체를 메일로 */
-export function statementMail(company: string, rows: MailOrder[]): { subject: string; body: string } {
+/** 명세 한 줄씩과 합계 (메일·카톡 명세가 같은 계산을 쓴다) */
+function statementParts(rows: MailOrder[]) {
   let kg = 0;
   let amount = 0;
   let make = 0;
@@ -78,6 +78,39 @@ export function statementMail(company: string, rows: MailOrder[]): { subject: st
     );
   });
   const missing = rows.filter((o) => o.kind === 'make' && o.make_cost == null).length;
+  return { lines, kg, amount, make, missing };
+}
+
+/** 카카오톡에 붙여넣을 문구: 작업 한 건 (이메일보다 짧게) */
+export function orderKakaoText(o: MailOrder): string {
+  const what = `${KIND_LABEL[o.kind]}${o.color ? ` / ${o.color}` : ''}`;
+  return [
+    `[${SIGNATURE}] ${o.company} 거래 내용`,
+    `■ 작업: ${what}`,
+    `■ 지시일: ${fmtDate(o.ordered_at)}   완료일: ${fmtDate(o.completed_at)}${o.paid_at ? `   납입일: ${fmtDate(o.paid_at)}` : ''}`,
+    ...moneyLines(o).map((l) => `■ ${l}`),
+  ].join('\n');
+}
+
+/** 카카오톡에 붙여넣을 문구: 업체별 미납 명세 */
+export function statementKakaoText(company: string, rows: MailOrder[]): string {
+  const { lines, kg, amount, make, missing } = statementParts(rows);
+  return [
+    `[${SIGNATURE}] ${company} 미납 명세 (${new Date().toLocaleDateString('ko-KR')})`,
+    `미납 ${rows.length}건`,
+    '',
+    ...lines,
+    '',
+    `■ 무게 합계: ${fmtKg(kg)}`,
+    `■ 판매금액: ${fmtWon(amount)}`,
+    `■ 제작비용: ${fmtWon(make)}${missing ? ` (제작비용 미입력 ${missing}건 제외)` : ''}`,
+    `■ 총 합계: ${fmtWon(amount + make)}`,
+  ].join('\n');
+}
+
+/** 업체별 미납 명세 전체를 메일로 */
+export function statementMail(company: string, rows: MailOrder[]): { subject: string; body: string } {
+  const { lines, kg, amount, make, missing } = statementParts(rows);
   const body = [
     `${company} 담당자님께,`,
     '',
@@ -370,6 +403,114 @@ export function useCompanyMail(): { send: SendFn; prompt: ReactNode } {
         </Modal>
       )}
     </>
+  );
+
+  return { send, prompt };
+}
+
+// ---------------------------------------------------------------- 카카오톡으로 내용 전송 (문구 복사 방식)
+// 카카오톡에는 작성 주소로 내용을 채우는 방법이 없어서, 문구(+도면 보기 링크)를 복사해 주고 사용자가 대화방에 붙여넣는다.
+// 도면은 파일이 아니라 며칠간 열 수 있는 링크로 넣는다.
+
+const SHARE_DAYS = 7;
+
+/** 도면 보기 링크 (직원·관리자가 만든 SHARE_DAYS 일짜리 서명 링크) */
+async function shareLink(id: number): Promise<string> {
+  const { path } = await api<{ path: string }>(`/orders/${id}/drawing-link?days=${SHARE_DAYS}`);
+  return `${API_BASE}${path}`;
+}
+
+/**
+ * 카톡 버튼용. send(문구, 도면 목록) 를 부르면 문구를 보여 주는 창이 열리고, 도면이 있으면 "도면 링크 포함"을 고를 수 있다.
+ * "문구 복사하기"를 누르면 클립보드에 복사된다. 사용하는 화면은 반환된 prompt 를 화면 어딘가에 그려 두어야 한다.
+ */
+export function useKakaoText(): { send: (text: string, drawings?: DrawingRef[]) => void; prompt: ReactNode } {
+  const toast = useToast();
+  const [open, setOpen] = useState<{ text: string; drawings: DrawingRef[] } | null>(null);
+  const [withLinks, setWithLinks] = useState(false);
+  const [links, setLinks] = useState<string[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const close = () => {
+    setOpen(null);
+    setWithLinks(false);
+    setLinks(null);
+    setCopied(false);
+  };
+
+  const send = (text: string, drawings: DrawingRef[] = []) => {
+    setWithLinks(false);
+    setLinks(null);
+    setCopied(false);
+    setOpen({ text, drawings });
+  };
+
+  const toggleLinks = async (on: boolean) => {
+    setWithLinks(on);
+    setCopied(false);
+    if (!on || links || !open) return;
+    setLoading(true);
+    try {
+      setLinks(await Promise.all(open.drawings.map((d) => shareLink(d.id))));
+    } catch (e) {
+      setWithLinks(false);
+      toast((e as Error).message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const full = open
+    ? withLinks && links
+      ? [
+          open.text,
+          '',
+          ...(open.drawings.length === 1
+            ? [`■ 도면 보기: ${links[0]}`]
+            : open.drawings.map((d, i) => `■ 도면 보기(작업 ${d.id}): ${links[i]}`)),
+          `(도면 링크는 ${SHARE_DAYS}일 동안 열 수 있습니다)`,
+        ].join('\n')
+      : open.text
+    : '';
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(full);
+      setCopied(true);
+    } catch {
+      toast('자동 복사가 되지 않았습니다. 위 문구를 직접 선택해서 복사해 주세요.', 'error');
+    }
+  };
+
+  const prompt = open && (
+    <Modal title="카카오톡으로 내용 보내기" onClose={close}>
+      <div className="space-y-3">
+        <textarea readOnly rows={Math.min(14, full.split('\n').length + 1)} value={full}
+          className="w-full rounded-xl border border-slate-400 bg-slate-50 p-3 text-base"
+          onFocus={(e) => e.currentTarget.select()} />
+        {open.drawings.length > 0 && (
+          <label className="flex items-center gap-3 rounded-xl border border-slate-300 p-3 text-base font-semibold">
+            <input type="checkbox" checked={withLinks} disabled={loading} onChange={(e) => toggleLinks(e.target.checked)} />
+            <span>
+              도면 보기 링크도 함께 보내기 ({open.drawings.length}개)
+              <span className="block text-sm font-normal text-slate-500">{SHARE_DAYS}일 동안 열 수 있습니다. 링크를 아는 사람은 누구나 도면을 볼 수 있습니다.</span>
+            </span>
+          </label>
+        )}
+        {copied ? (
+          <div className="space-y-2 rounded-xl border border-emerald-700 bg-emerald-100 p-3 text-base">
+            <p className="font-semibold text-emerald-900">복사했습니다.</p>
+            <p>카카오톡을 열어 업체 대화방에서 <b>붙여넣기</b> 한 뒤 전송하세요. (폰: 입력칸을 길게 눌러 붙여넣기 / 컴퓨터: Ctrl+V)</p>
+            <Button className="w-full" onClick={close}>확인</Button>
+          </div>
+        ) : (
+          <Button className="w-full" disabled={loading || (withLinks && !links)} onClick={copy}>
+            {loading ? '도면 링크 만드는 중...' : '문구 복사하기'}
+          </Button>
+        )}
+      </div>
+    </Modal>
   );
 
   return { send, prompt };
