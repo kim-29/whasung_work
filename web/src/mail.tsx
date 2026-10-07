@@ -44,8 +44,6 @@ function moneyLines(o: Pick<MailOrder, 'kind' | 'actual_weight' | 'price_per_kg'
 export function orderMail(o: MailOrder): { subject: string; body: string } {
   const what = `${KIND_LABEL[o.kind]}${o.color ? ` / ${o.color}` : ''}`;
   const body = [
-    `${o.company} 담당자님께,`,
-    '',
     '안녕하세요. 화성알루미늄입니다.',
     '아래와 같이 작업이 완료되어 거래 내용을 보내 드립니다.',
     '',
@@ -64,18 +62,20 @@ function statementParts(rows: MailOrder[]) {
   let kg = 0;
   let amount = 0;
   let make = 0;
-  const lines = rows.map((o, i) => {
+  // 건별 카드형: 폰·카톡에서도 줄이 꺾이지 않도록 한 건을 짧은 여러 줄로 쓰고, 건 사이는 빈 줄로 띄운다
+  const lines = rows.flatMap((o, i) => {
     kg += o.actual_weight ?? 0;
     amount += o.amount ?? 0;
     make += o.kind === 'make' ? o.make_cost ?? 0 : 0;
     const total = (o.amount ?? 0) + (o.kind === 'make' ? o.make_cost ?? 0 : 0);
     const unit = o.price_per_kg == null ? '단가 미설정' : `${o.price_per_kg.toLocaleString('ko-KR')}원/kg`;
-    return (
-      `${i + 1}. ${fmtDate(o.ordered_at)} ${KIND_LABEL[o.kind]}${o.color ? `/${o.color}` : ''}  ` +
-      `${fmtKg(o.actual_weight)} × ${unit} = ${won(o.amount)}` +
-      (o.kind === 'make' ? `  + 제작비용 ${o.make_cost == null ? '미입력' : fmtWon(o.make_cost)}` : '') +
-      `  → ${fmtWon(total)}`
-    );
+    return [
+      ...(i > 0 ? [''] : []),
+      `${i + 1}) ${fmtDate(o.ordered_at)}  ${KIND_LABEL[o.kind]}${o.color ? ` / ${o.color}` : ''}`,
+      `   ${fmtKg(o.actual_weight)} × ${unit} = ${won(o.amount)}`,
+      ...(o.kind === 'make' ? [`   제작비용 ${o.make_cost == null ? '미입력' : fmtWon(o.make_cost)}`] : []),
+      `   계 ${fmtWon(total)}`,
+    ];
   });
   const missing = rows.filter((o) => o.kind === 'make' && o.make_cost == null).length;
   return { lines, kg, amount, make, missing };
@@ -105,8 +105,8 @@ export function orderKakaoText(o: MailOrder): string {
 export function statementKakaoText(company: string, rows: MailOrder[]): string {
   const { lines, kg, amount, make, missing } = statementParts(rows);
   return [
-    `[${SIGNATURE}] ${company} 미납 명세 (${new Date().toLocaleDateString('ko-KR')})`,
-    `미납 ${rows.length}건`,
+    '안녕하세요. 화성알루미늄입니다.',
+    `현재 미납 내역 ${rows.length}건의 명세를 보내 드립니다.`,
     '',
     ...lines,
     '',
@@ -114,6 +114,10 @@ export function statementKakaoText(company: string, rows: MailOrder[]): string {
     `■ 판매금액: ${fmtWon(amount)}`,
     `■ 제작비용: ${fmtWon(make)}${missing ? ` (제작비용 미입력 ${missing}건 제외)` : ''}`,
     `■ 총 합계: ${fmtWon(amount + make)}`,
+    LINKS_MARK, // 도면 링크를 고르면 이 자리에 들어가고, 고르지 않으면 이 줄은 지워진다
+    '',
+    '확인 부탁드립니다. 감사합니다.',
+    SIGNATURE,
   ].join('\n');
 }
 
@@ -121,8 +125,6 @@ export function statementKakaoText(company: string, rows: MailOrder[]): string {
 export function statementMail(company: string, rows: MailOrder[]): { subject: string; body: string } {
   const { lines, kg, amount, make, missing } = statementParts(rows);
   const body = [
-    `${company} 담당자님께,`,
-    '',
     '안녕하세요. 화성알루미늄입니다.',
     `현재 미납 내역 ${rows.length}건의 명세를 보내 드립니다.`,
     '',
