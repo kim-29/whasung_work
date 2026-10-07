@@ -134,10 +134,21 @@ async function downloadDrawing(d: DrawingRef) {
 
 const MAX_URL = 1900; // 서비스마다 주소 길이 제한이 달라 안전한 길이로 제한한다
 
+const UA = typeof navigator === 'undefined' ? '' : navigator.userAgent;
+const IS_IOS = /iPhone|iPad|iPod/i.test(UA) || (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1 && /Macintosh/i.test(UA));
+const IS_MOBILE = IS_IOS || /Android/i.test(UA);
+
 /** 서비스별 메일 작성 페이지 주소 (받는 사람·제목·본문을 채워서). self 는 내 메일 주소 */
 function composeUrl(service: MailService, to: string, subject: string, body: string, self: string): string {
   const q = (o: Record<string, string>) =>
     Object.entries(o).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  // 폰: 웹 메일 작성 페이지는 앱 설치 안내로 넘어가거나 열리지 않는 일이 많아서, 폰의 메일 앱을 바로 연다.
+  if (IS_MOBILE) {
+    if (service === 'gmail') return IS_IOS ? `googlegmail:///co?${q({ to, subject, body })}` : mailto; // 안드로이드는 mailto 를 Gmail 앱이 받는다
+    if (service === 'outlook') return `ms-outlook://compose?${q({ to, subject, body })}`;
+    return mailto; // 네이버·다음·기본 앱: 폰의 기본 메일 앱 (앱이 받는 사람·제목·내용 채우기를 지원하지 않으면 복사해 둔 내용을 붙여넣기)
+  }
   switch (service) {
     case 'gmail': // authuser 에 내 주소를 주면 여러 구글 계정이 로그인되어 있어도 이 계정으로 열린다
       return `https://mail.google.com/mail/?${q({ view: 'cm', fs: '1', authuser: self, to, su: subject, body })}`;
@@ -158,20 +169,22 @@ function openCompose(
 ): { state: 'opened' | 'blocked'; url: string } {
   let body = mail.body;
   let url = composeUrl(service, to, mail.subject, body, self);
-  const tooLong = service !== 'daum' && url.length > MAX_URL;
+  const tooLong = (service !== 'daum' || IS_MOBILE) && url.length > MAX_URL;
   if (tooLong) {
-    body = '(내용이 길어 복사해 두었습니다. 이곳에 붙여넣기(Ctrl+V) 해 주세요.)';
+    body = IS_MOBILE ? '(내용이 길어 복사해 두었습니다. 이곳을 길게 눌러 붙여넣기 해 주세요.)' : '(내용이 길어 복사해 두었습니다. 이곳에 붙여넣기(Ctrl+V) 해 주세요.)';
     url = composeUrl(service, to, mail.subject, body, self);
   }
   if (tooLong || service === 'naver' || service === 'daum') {
     navigator.clipboard?.writeText(`받는 사람: ${to}\r\n제목: ${mail.subject}\r\n\r\n${mail.body}`).catch(() => {});
+    const paste = IS_MOBILE ? '길게 눌러 붙여넣기' : '붙여넣기(Ctrl+V)';
     notify(
-      service === 'daum' ? '받는 사람·제목·내용을 복사했습니다. 작성 창에서 붙여넣기(Ctrl+V) 하세요.'
-      : service === 'naver' ? '내용을 복사해 두었습니다. 작성 창이 비어 있으면 붙여넣기(Ctrl+V) 하세요.'
-      : '내용이 길어 클립보드에 복사했습니다. 메일 본문에 붙여넣기(Ctrl+V) 해 주세요.',
+      service === 'daum' ? `받는 사람·제목·내용을 복사했습니다. 작성 창에서 ${paste} 하세요.`
+      : service === 'naver' ? `내용을 복사해 두었습니다. 작성 창이 비어 있으면 ${paste} 하세요.`
+      : `내용이 길어 클립보드에 복사했습니다. 메일 본문에 ${paste} 해 주세요.`,
     );
   }
-  if (service === 'app') {
+  if (service === 'app' || IS_MOBILE) {
+    // 폰에서는 새 창 대신 현재 화면에서 앱을 연다 (앱이 열리고 이 화면은 그대로 남는다)
     const a = document.createElement('a');
     a.href = url;
     a.click();
