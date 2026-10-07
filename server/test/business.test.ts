@@ -89,6 +89,40 @@ describe('제작비용 · 업체 · 묶음 납입 · 한국 시간', () => {
     expect(unpaid.map((r) => r.id)).toContain(o.id);
   });
 
+  it('추가 단가: 그 바가 들어간 작업은 색상 단가 + 추가 단가를 작업 전체 무게에 적용하고, 작업에 고정된다', async () => {
+    const t = await login();
+    await send('PUT', '/api/prices', { color: '블랙', price_per_kg: 2000 }, t);
+    const pricey = await (await send('POST', '/api/bars', { name: 'PA-상하단바', kg_per_m: 1, price_add: 500 }, t)).json<{ id: number }>();
+    await send('POST', '/api/bars', { name: 'PA-일반', kg_per_m: 1 }, t);
+    const bars = await (await call('/api/bars', { token: t })).json<{ name: string; price_add: number }[]>();
+    expect(bars.find((b) => b.name === 'PA-상하단바')?.price_add).toBe(500);
+    expect(bars.find((b) => b.name === 'PA-일반')?.price_add).toBe(0);
+
+    const mk = async (items: { bar_name: string }[]) =>
+      (await (await send('POST', '/api/orders', { company: '추가단가업체', kind: 'cut', items: items.map((i) => ({ ...i, length_mm: 1000, qty: 10, color: '블랙' })) }, t)).json<{ id: number }>()).id;
+    const mixed = await mk([{ bar_name: 'PA-상하단바' }, { bar_name: 'PA-일반' }]); // 하나라도 있으면 전체에 적용
+    const plain = await mk([{ bar_name: 'PA-일반' }]);
+    for (const id of [mixed, plain]) await send('POST', `/api/orders/${id}/weight`, { weight: 10 }, t);
+    const get = async (id: number) => (await (await call(`/api/orders/${id}`, { token: t })).json()) as { price_per_kg: number; price_add: number; amount: number };
+    expect(await get(mixed)).toMatchObject({ price_per_kg: 2500, price_add: 500, amount: 25000 });
+    expect(await get(plain)).toMatchObject({ price_per_kg: 2000, price_add: 0, amount: 20000 });
+
+    // 대시보드(미납)도 같은 단가로 계산된다
+    const unpaid = await (await call('/api/dashboard/unpaid', { token: t })).json<{ id: number; price_per_kg: number; price_add: number; amount: number }[]>();
+    expect(unpaid.find((o) => o.id === mixed)).toMatchObject({ price_per_kg: 2500, price_add: 500, amount: 25000 });
+
+    // 바의 추가 단가를 나중에 바꿔도 이미 접수된 작업은 그대로다
+    await send('PUT', `/api/bars/${pricey.id}`, { name: 'PA-상하단바', kg_per_m: 1, price_add: 900 }, t);
+    expect(await get(mixed)).toMatchObject({ price_per_kg: 2500, price_add: 500 });
+    // 절단서를 고치면 그때의 바 기준으로 다시 정해진다 (추가 단가 바를 빼면 0)
+    await send('PATCH', `/api/orders/${mixed}`, { items: [{ bar_name: 'PA-일반', length_mm: 1000, qty: 10, color: '블랙' }] }, t);
+    expect(await get(mixed)).toMatchObject({ price_per_kg: 2000, price_add: 0 });
+    await send('PATCH', `/api/orders/${mixed}`, { items: [{ bar_name: 'PA-상하단바', length_mm: 1000, qty: 10, color: '블랙' }] }, t);
+    expect(await get(mixed)).toMatchObject({ price_per_kg: 2900, price_add: 900 });
+    // 음수·소수 추가 단가는 거절
+    expect((await send('POST', '/api/bars', { name: 'PA-나쁨', kg_per_m: 1, price_add: -1 }, t)).status).toBe(400);
+  });
+
   it('월간 거래내역은 대기(진행중) → 미납 → 완납 순이고 같은 상태는 지시일이 늦은 것부터', async () => {
     const t = await login();
     const mk = async (company: string) =>

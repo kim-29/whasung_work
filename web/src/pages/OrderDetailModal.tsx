@@ -99,7 +99,7 @@ export default function OrderDetailModal({
                 {showMoney && (
                   <>
                     <p>
-                      단가 {o.price_per_kg == null ? <b className="text-red-600">미설정</b> : `${o.price_per_kg.toLocaleString('ko-KR')}원/kg`}
+                      단가 {o.price_per_kg == null ? <b className="text-red-600">미설정</b> : `${o.price_per_kg.toLocaleString('ko-KR')}원/kg${o.price_add ? ` (추가 +${o.price_add.toLocaleString('ko-KR')} 포함)` : ''}`}
                       {' · '}금액 <b className={o.amount == null ? 'text-red-600' : ''}>{o.amount == null ? '단가 미설정' : fmtWon(o.amount)}</b>
                     </p>
                     {isMake && (

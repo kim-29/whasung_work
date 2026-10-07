@@ -28,6 +28,8 @@ export interface Bar {
   name: string;
   kg_per_m: number;
   note: string | null;
+  /** 추가 단가(원/kg): 이 바가 들어간 작업은 색상 단가에 더해진다 */
+  price_add?: number;
 }
 
 export interface ColorPrice {
@@ -68,6 +70,8 @@ export interface OrderDetail extends OrderSummary {
   /** 제작비용(원). null 은 아직 입력하지 않음. 제작 작업에만 쓴다 (작업장에는 내려오지 않는다) */
   make_cost?: number | null;
   price_per_kg?: number | null;
+  /** 작업에 고정된 추가 단가(원/kg). price_per_kg 에 이미 더해져 있다 */
+  price_add?: number;
   amount?: number | null;
 }
 

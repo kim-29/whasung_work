@@ -18,15 +18,19 @@ export function PriceLine({
   weight,
   pricePerKg,
   amount,
+  priceAdd,
 }: {
   weight: number | null | undefined;
   pricePerKg: number | null | undefined;
   amount: number | null | undefined;
+  /** 단가에 이미 포함된 추가 단가(원/kg). 있으면 계산 근거를 함께 보여 준다 */
+  priceAdd?: number | null;
 }) {
   if (weight == null) return <span className="text-sm text-slate-500">무게 입력 전</span>;
   return (
     <span className="text-sm text-slate-700">
-      {fmtKg(weight)} × {pricePerKg == null ? <b className="text-red-600">단가 미설정</b> : `${pricePerKg.toLocaleString('ko-KR')}원/kg`} ={' '}
+      {fmtKg(weight)} × {pricePerKg == null ? <b className="text-red-600">단가 미설정</b> : `${pricePerKg.toLocaleString('ko-KR')}원/kg`}
+      {priceAdd ? <span className="text-xs text-slate-500"> (추가 +{priceAdd.toLocaleString('ko-KR')} 포함)</span> : null} ={' '}
       <b className={amount == null ? 'text-red-600' : ''}>{fmtWon(amount)}</b>
     </span>
   );

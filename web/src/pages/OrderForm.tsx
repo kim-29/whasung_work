@@ -187,6 +187,7 @@ export default function OrderForm({
   const prices = useQuery({ queryKey: ['prices'], queryFn: () => api<ColorPrice[]>('/prices'), staleTime: 30_000 });
   const rate = useMemo(() => new Map((bars.data ?? []).map((b) => [b.name, b.kg_per_m])), [bars.data]);
   const price = useMemo(() => new Map((prices.data ?? []).map((p) => [p.color, p.price_per_kg])), [prices.data]);
+  const addOfBar = useMemo(() => new Map((bars.data ?? []).map((b) => [b.name, b.price_add ?? 0])), [bars.data]);
 
   const [company, setCompany] = useState(initial?.company ?? '');
   const [kind, setKind] = useState<Kind>(initial?.kind ?? 'cut');
@@ -217,8 +218,10 @@ export default function OrderForm({
     return [...m].filter(([, w]) => w > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, rowWeights.join(','), kind, makeColor]);
+  // 추가 단가: 그 색상 줄에 추가 단가가 있는 바가 하나라도 있으면 그 색상 무게 전체에 더한다
+  const addOfColor = (c: Color) => items.reduce((m, it) => (colorOf(it) === c ? Math.max(m, addOfBar.get(it.bar_name) ?? 0) : m), 0);
   const unpriced = byColor.filter(([c]) => price.get(c) == null);
-  const estimate = byColor.reduce((s, [c, w]) => s + w * (price.get(c) ?? 0), 0);
+  const estimate = byColor.reduce((s, [c, w]) => s + w * ((price.get(c) ?? 0) + addOfColor(c)), 0);
 
   const submit = async () => {
     setError('');
@@ -396,8 +399,8 @@ export default function OrderForm({
           <p className="text-lg font-bold">예상 총 무게 {fmtKg(total)}</p>
           {byColor.map(([c, w]) => (
             <p key={c} className="text-base text-slate-700">
-              {c} {fmtKg(w)} × {price.get(c) == null ? '단가 미설정' : `${price.get(c)!.toLocaleString('ko-KR')}원`}
-              {price.get(c) != null && <> = <b>{fmtWon(w * price.get(c)!)}</b></>}
+              {c} {fmtKg(w)} × {price.get(c) == null ? '단가 미설정' : addOfColor(c) ? `(${price.get(c)!.toLocaleString('ko-KR')} + 추가 ${addOfColor(c).toLocaleString('ko-KR')})원` : `${price.get(c)!.toLocaleString('ko-KR')}원`}
+              {price.get(c) != null && <> = <b>{fmtWon(w * (price.get(c)! + addOfColor(c)))}</b></>}
             </p>
           ))}
           <p className="border-t border-slate-300 pt-2 text-xl font-bold">

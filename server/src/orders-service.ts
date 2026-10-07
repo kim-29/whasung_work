@@ -41,10 +41,14 @@ export type OrderInput = z.infer<typeof orderBaseSchema>;
 export const theoryWeight = (kgPerM: number, lengthMm: number, qty: number) =>
   Math.round(kgPerM * (lengthMm / 1000) * qty * 1000) / 1000;
 
-/** 오더 지시일 기준 색상 단가 (SQL 조각, 별칭 o = orders). 단가가 없으면 NULL */
-export const PRICE_SQL = `(SELECT p.price_per_kg FROM color_prices p
+/** 오더 적용 단가(원/kg) = 지시일 기준 색상 단가 + 오더에 고정된 추가 단가 (SQL 조각, 별칭 o = orders). 색상 단가가 없으면 NULL */
+export const PRICE_SQL = `((SELECT p.price_per_kg FROM color_prices p
    WHERE p.color = o.color AND p.effective_from <= o.created_at
-   ORDER BY p.effective_from DESC, p.id DESC LIMIT 1)`;
+   ORDER BY p.effective_from DESC, p.id DESC LIMIT 1) + o.price_add)`;
+
+/** 절단서에 들어 있는 바 중 가장 큰 추가 단가 (이 바가 하나라도 있으면 작업 전체 무게에 적용) */
+const priceAddOf = (items: { bar_name: string }[], add: Map<string, number>) =>
+  items.reduce((m, it) => Math.max(m, add.get(it.bar_name) ?? 0), 0);
 
 interface CreateOpts {
   source: 'front' | 'blender' | 'manual';
@@ -61,11 +65,13 @@ export interface CreatedOrder {
 
 /** 색상별로 나누어 오더를 만든다. 나뉜 오더는 group_id(첫 오더의 id)로 묶인다. */
 export async function createOrder(env: Env, input: OrderInput, opts: CreateOpts) {
-  const { results: bars } = await env.DB.prepare(`SELECT name, kg_per_m FROM bar_database`).all<{
+  const { results: bars } = await env.DB.prepare(`SELECT name, kg_per_m, price_add FROM bar_database`).all<{
     name: string;
     kg_per_m: number;
+    price_add: number;
   }>();
   const rate = new Map(bars.map((b) => [b.name, b.kg_per_m]));
+  const addOf = new Map(bars.map((b) => [b.name, b.price_add]));
 
   const byColor = new Map<string, OrderInput['items']>();
   for (const it of input.items) byColor.set(it.color, [...(byColor.get(it.color) ?? []), it]);
@@ -93,12 +99,12 @@ export async function createOrder(env: Env, input: OrderInput, opts: CreateOpts)
 
     const head = await env.DB.prepare(
       `INSERT INTO orders (company, kind, request_note, status, source, color, group_id,
-                           has_unknown_bar, theory_weight, actual_weight, created_by, completed_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11, CASE WHEN ?4 = 'unpaid' THEN datetime('now') END)`,
+                           has_unknown_bar, theory_weight, actual_weight, created_by, price_add, completed_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12, CASE WHEN ?4 = 'unpaid' THEN datetime('now') END)`,
     )
       .bind(
         input.company, input.kind, input.request_note, status, opts.source, color,
-        created[0]?.id ?? null, unknown, total, opts.actualWeight ?? null, opts.createdBy,
+        created[0]?.id ?? null, unknown, total, opts.actualWeight ?? null, opts.createdBy, priceAddOf(items, addOf),
       )
       .run();
     const orderId = head.meta.last_row_id;
@@ -130,11 +136,13 @@ export async function createOrder(env: Env, input: OrderInput, opts: CreateOpts)
 
 /** 절단서 행 전체 교체 (납입 전 수정용). 이론무게·미등록 바 표시를 다시 계산한다. */
 export async function replaceItems(env: Env, orderId: number, items: OrderInput['items']) {
-  const { results: bars } = await env.DB.prepare(`SELECT name, kg_per_m FROM bar_database`).all<{
+  const { results: bars } = await env.DB.prepare(`SELECT name, kg_per_m, price_add FROM bar_database`).all<{
     name: string;
     kg_per_m: number;
+    price_add: number;
   }>();
   const rate = new Map(bars.map((b) => [b.name, b.kg_per_m]));
+  const addOf = new Map(bars.map((b) => [b.name, b.price_add]));
   let total = 0;
   let unknown = 0;
   const stmts = [env.DB.prepare(`DELETE FROM work_list WHERE order_id = ?1`).bind(orderId)];
@@ -152,8 +160,8 @@ export async function replaceItems(env: Env, orderId: number, items: OrderInput[
   }
   total = Math.round(total * 1000) / 1000;
   stmts.push(
-    env.DB.prepare(`UPDATE orders SET theory_weight = ?1, has_unknown_bar = ?2, color = ?3 WHERE id = ?4`).bind(
-      total, unknown, items[0].color, orderId,
+    env.DB.prepare(`UPDATE orders SET theory_weight = ?1, has_unknown_bar = ?2, color = ?3, price_add = ?4 WHERE id = ?5`).bind(
+      total, unknown, items[0].color, priceAddOf(items, addOf), orderId,
     ),
   );
   await env.DB.batch(stmts);

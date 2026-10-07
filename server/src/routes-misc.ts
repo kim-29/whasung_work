@@ -12,7 +12,7 @@ export const bars = new Hono<AppEnv>();
 
 bars.get('/', anyUser, async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT id, name, kg_per_m, note FROM bar_database WHERE active = 1 ORDER BY name`,
+    `SELECT id, name, kg_per_m, note, price_add FROM bar_database WHERE active = 1 ORDER BY name`,
   ).all();
   return c.json(results);
 });
@@ -21,6 +21,8 @@ const barSchema = z.object({
   name: z.string().min(1).max(60),
   kg_per_m: z.number().positive().max(1000),
   note: z.string().max(200).optional().default(''),
+  // 추가 단가(원/kg): 이 바가 들어간 작업은 색상 단가에 이 금액을 더한다 (작업 전체 무게에 적용)
+  price_add: z.number().int().min(0).max(1_000_000).optional().default(0),
 });
 
 bars.post('/', frontOnly, async (c) => {
@@ -31,13 +33,13 @@ bars.post('/', frontOnly, async (c) => {
     .first<{ id: number; active: number }>();
   if (exists?.active) return c.json({ error: '이미 등록된 바 이름입니다.' }, 409);
   if (exists) {
-    await c.env.DB.prepare(`UPDATE bar_database SET kg_per_m = ?1, note = ?2, active = 1 WHERE id = ?3`)
-      .bind(body.data.kg_per_m, body.data.note, exists.id)
+    await c.env.DB.prepare(`UPDATE bar_database SET kg_per_m = ?1, note = ?2, price_add = ?3, active = 1 WHERE id = ?4`)
+      .bind(body.data.kg_per_m, body.data.note, body.data.price_add, exists.id)
       .run();
     return c.json({ id: exists.id }, 201);
   }
-  const r = await c.env.DB.prepare(`INSERT INTO bar_database (name, kg_per_m, note) VALUES (?1,?2,?3)`)
-    .bind(body.data.name, body.data.kg_per_m, body.data.note)
+  const r = await c.env.DB.prepare(`INSERT INTO bar_database (name, kg_per_m, note, price_add) VALUES (?1,?2,?3,?4)`)
+    .bind(body.data.name, body.data.kg_per_m, body.data.note, body.data.price_add)
     .run();
   return c.json({ id: r.meta.last_row_id }, 201);
 });
@@ -47,8 +49,8 @@ bars.put('/:id', frontOnly, async (c) => {
   const body = barSchema.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: '바 이름과 미터당 무게(kg/m)를 확인해 주세요.' }, 400);
   try {
-    await c.env.DB.prepare(`UPDATE bar_database SET name = ?1, kg_per_m = ?2, note = ?3 WHERE id = ?4`)
-      .bind(body.data.name, body.data.kg_per_m, body.data.note, Number(c.req.param('id')))
+    await c.env.DB.prepare(`UPDATE bar_database SET name = ?1, kg_per_m = ?2, note = ?3, price_add = ?4 WHERE id = ?5`)
+      .bind(body.data.name, body.data.kg_per_m, body.data.note, body.data.price_add, Number(c.req.param('id')))
       .run();
   } catch {
     return c.json({ error: '이미 등록된 바 이름입니다.' }, 409);
@@ -186,7 +188,7 @@ dashboard.get('/unpaid', async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT o.id, o.company, o.kind, o.color, o.group_id, o.created_at AS ordered_at, o.completed_at,
             o.actual_weight, o.has_unknown_bar, o.drawing_key IS NOT NULL AS has_drawing,
-            ${PRICE_SQL} AS price_per_kg, ROUND(o.actual_weight * ${PRICE_SQL}) AS amount, o.make_cost
+            ${PRICE_SQL} AS price_per_kg, o.price_add, ROUND(o.actual_weight * ${PRICE_SQL}) AS amount, o.make_cost
        FROM orders o WHERE o.status = 'unpaid' ORDER BY o.group_id, o.completed_at, o.id`,
   ).all();
   return c.json(results);
@@ -199,7 +201,7 @@ dashboard.get('/monthly', async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT o.id, o.company, o.kind, o.color, o.status, o.actual_weight, o.created_at AS ordered_at,
             o.completed_at, o.paid_at, o.drawing_key IS NOT NULL AS has_drawing, o.drawing_archived_at IS NOT NULL AS drawing_archived,
-            ${PRICE_SQL} AS price_per_kg, ROUND(o.actual_weight * ${PRICE_SQL}) AS amount, o.make_cost
+            ${PRICE_SQL} AS price_per_kg, o.price_add, ROUND(o.actual_weight * ${PRICE_SQL}) AS amount, o.make_cost
        FROM orders o WHERE strftime('%Y-%m', o.created_at, '+9 hours') = ?1
       -- 대기(진행중) → 미납 → 완납 순, 같은 상태는 지시일이 늦은 것부터
       ORDER BY CASE o.status WHEN 'unpaid' THEN 1 WHEN 'paid' THEN 2 ELSE 0 END, o.created_at DESC, o.id DESC`,
@@ -241,7 +243,7 @@ dashboard.get('/by-company', async (c) => {
   if (company) {
     const { results } = await c.env.DB.prepare(
       `SELECT o.id, o.kind, o.color, o.group_id, o.created_at AS ordered_at, o.completed_at, o.actual_weight,
-              ${PRICE_SQL} AS price_per_kg, ROUND(o.actual_weight * ${PRICE_SQL}) AS amount, o.make_cost
+              ${PRICE_SQL} AS price_per_kg, o.price_add, ROUND(o.actual_weight * ${PRICE_SQL}) AS amount, o.make_cost
          FROM orders o WHERE o.status = 'unpaid' AND o.company = ?1 ORDER BY o.completed_at, o.id`,
     )
       .bind(company)

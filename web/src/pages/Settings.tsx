@@ -193,11 +193,11 @@ function Bars() {
   const qc = useQueryClient();
   const toast = useToast();
   const q = useQuery({ queryKey: ['bars'], queryFn: () => api<Bar[]>('/bars') });
-  const [edit, setEdit] = useState<{ id?: number; name: string; kg_per_m: string; note: string } | null>(null);
+  const [edit, setEdit] = useState<{ id?: number; name: string; kg_per_m: string; note: string; price_add: string } | null>(null);
 
   const save = async () => {
     if (!edit) return;
-    const body = { name: edit.name.trim(), kg_per_m: Number(edit.kg_per_m), note: edit.note };
+    const body = { name: edit.name.trim(), kg_per_m: Number(edit.kg_per_m), note: edit.note, price_add: Number(edit.price_add) || 0 };
     try {
       if (edit.id) await api(`/bars/${edit.id}`, { method: 'PUT', body });
       else await api('/bars', { body });
@@ -218,15 +218,16 @@ function Bars() {
     <Card>
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-base font-bold">바(자재) 목록</h2>
-        <Button onClick={() => setEdit({ name: '', kg_per_m: '', note: '' })}>+ 바 추가</Button>
+        <Button onClick={() => setEdit({ name: '', kg_per_m: '', note: '', price_add: '' })}>+ 바 추가</Button>
       </div>
-      <p className="mb-2 text-sm text-slate-500">무게는 1미터당 kg 입니다. 고쳐도 이미 접수된 작업의 무게는 바뀌지 않습니다.</p>
+      <p className="mb-2 text-sm text-slate-500">무게는 1미터당 kg 입니다. 고쳐도 이미 접수된 작업의 무게는 바뀌지 않습니다. 자재 값이 더 비싼 바는 <b>추가 단가</b>(원/kg)를 넣으면, 그 바가 들어간 작업은 <b>작업 전체 무게</b>에 색상 단가 + 추가 단가가 적용됩니다. 이미 접수된 작업에는 적용되지 않습니다.</p>
       <div className="divide-y divide-slate-200">
         {q.data?.map((b) => (
           <div key={b.id} className="flex items-center gap-2 py-2.5">
             <span className="flex-1 text-base font-semibold">{b.name}</span>
+            {!!b.price_add && <Badge color="amber">단가 +{b.price_add.toLocaleString('ko-KR')}</Badge>}
             <span className="text-base">{b.kg_per_m} kg/m</span>
-            <Button tone="plain" className="!min-h-9 text-sm" onClick={() => setEdit({ id: b.id, name: b.name, kg_per_m: String(b.kg_per_m), note: b.note ?? '' })}>수정</Button>
+            <Button tone="plain" className="!min-h-9 text-sm" onClick={() => setEdit({ id: b.id, name: b.name, kg_per_m: String(b.kg_per_m), note: b.note ?? '', price_add: b.price_add ? String(b.price_add) : '' })}>수정</Button>
             <Button tone="plain" className="!min-h-9 text-sm" onClick={() => remove(b)}>삭제</Button>
           </div>
         ))}
@@ -237,6 +238,7 @@ function Bars() {
           <div className="space-y-3">
             <Field label="바 이름"><input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
             <Field label="1미터당 무게(kg/m)"><input inputMode="decimal" value={edit.kg_per_m} onChange={(e) => setEdit({ ...edit, kg_per_m: e.target.value })} /></Field>
+            <Field label="추가 단가 (원/kg, 없으면 비워 두기)"><input inputMode="numeric" value={edit.price_add} placeholder="예) 500" onChange={(e) => setEdit({ ...edit, price_add: e.target.value.replace(/\D/g, '') })} /></Field>
             <Field label="메모"><input value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></Field>
             <Button className="w-full" disabled={!edit.name.trim() || !(Number(edit.kg_per_m) > 0)} onClick={save}>저장</Button>
           </div>

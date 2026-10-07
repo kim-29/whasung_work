@@ -12,7 +12,7 @@ interface UnpaidRow {
   id: number; company: string; kind: Kind; color: Color | null; group_id: number | null;
   ordered_at: string; completed_at: string | null; actual_weight: number | null;
   has_unknown_bar: number; has_drawing: number;
-  price_per_kg: number | null; amount: number | null; make_cost: number | null;
+  price_per_kg: number | null; price_add: number; amount: number | null; make_cost: number | null;
 }
 
 // 보여주는 순서: 월간 → 미납 → 업체별 미납 → 자재 사용
@@ -68,7 +68,7 @@ function Monthly() {
         orders: {
           id: number; company: string; kind: Kind; color: Color | null; status: Status; actual_weight: number | null;
           ordered_at: string; completed_at: string | null; paid_at: string | null; has_drawing: number; drawing_archived: number;
-          price_per_kg: number | null; amount: number | null; make_cost: number | null;
+          price_per_kg: number | null; price_add: number; amount: number | null; make_cost: number | null;
         }[];
       }>(`/dashboard/monthly?month=${month}`),
   });
@@ -114,7 +114,7 @@ function Monthly() {
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <PriceLine weight={o.actual_weight} pricePerKg={o.price_per_kg} amount={o.amount} />
+            <PriceLine weight={o.actual_weight} pricePerKg={o.price_per_kg} priceAdd={o.price_add} amount={o.amount} />
             {o.kind === 'make' && <MakeCostBox inline orderId={o.id} status={o.status} makeCost={o.make_cost} />}
             {o.actual_weight != null && (
               <span className="ml-auto whitespace-nowrap text-base font-bold">합계 {fmtWon(totalOf(o.amount, o.kind === 'make' ? o.make_cost : null))}</span>
@@ -248,7 +248,7 @@ function Unpaid() {
               <span className="ml-auto text-sm text-slate-500">지시 {fmtDate(r.ordered_at)} · 완료 {fmtDate(r.completed_at)}</span>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <PriceLine weight={r.actual_weight} pricePerKg={r.price_per_kg} amount={r.amount} />
+              <PriceLine weight={r.actual_weight} pricePerKg={r.price_per_kg} priceAdd={r.price_add} amount={r.amount} />
               {r.kind === 'make' && <MakeCostBox inline orderId={r.id} status="unpaid" makeCost={r.make_cost} />}
               <span className="ml-auto whitespace-nowrap text-base font-bold">합계 {fmtWon(rowTotal(r))}</span>
             </div>
@@ -275,7 +275,7 @@ function Unpaid() {
 interface CompanyDetailRow {
   id: number; kind: Kind; color: Color | null; group_id: number | null;
   ordered_at: string; completed_at: string | null; actual_weight: number | null;
-  price_per_kg: number | null; amount: number | null; make_cost: number | null;
+  price_per_kg: number | null; price_add: number; amount: number | null; make_cost: number | null;
 }
 
 function ByCompany() {
@@ -399,7 +399,7 @@ function ByCompany() {
                     <td className="whitespace-nowrap pr-2">{fmtDate(r.completed_at)}</td>
                     <td className="pr-2">{KIND_LABEL[r.kind]}</td><td className="pr-2">{r.color || '-'}</td>
                     <td className="whitespace-nowrap pr-2 text-right">{fmtKg(r.actual_weight)}</td>
-                    <td className={`whitespace-nowrap pr-2 text-right ${r.price_per_kg == null ? 'text-red-600' : ''}`}>{r.price_per_kg == null ? '미설정' : r.price_per_kg.toLocaleString('ko-KR')}</td>
+                    <td className={`whitespace-nowrap pr-2 text-right ${r.price_per_kg == null ? 'text-red-600' : ''}`}>{r.price_per_kg == null ? '미설정' : r.price_per_kg.toLocaleString('ko-KR')}{r.price_add ? <span className="text-xs text-slate-500"> (+{r.price_add.toLocaleString('ko-KR')})</span> : null}</td>
                     <td className="whitespace-nowrap pr-2 text-right">{r.amount == null ? '-' : fmtWon(r.amount)}</td>
                     <td className={`whitespace-nowrap pr-2 text-right ${r.kind === 'make' && r.make_cost == null ? 'text-red-600' : ''}`}>
                       {r.kind !== 'make' ? '-' : r.make_cost == null ? '미입력' : fmtWon(r.make_cost)}

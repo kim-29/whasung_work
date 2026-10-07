@@ -56,7 +56,7 @@ orders.get('/:id', anyUser, async (c) => {
     .bind(id)
     .all();
   if (c.get('user').role === 'workshop') {
-    const { make_cost: _hidden, ...safe } = order as typeof order & { make_cost?: number | null };
+    const { make_cost: _hidden, price_add: _hiddenAdd, ...safe } = order as typeof order & { make_cost?: number | null; price_add?: number };
     return c.json({ ...safe, items }); // 작업장에는 금액·제작비용을 보여주지 않는다
   }
   // 금액은 저장하지 않고, 지시일 기준 단가로 계산해서 내려준다

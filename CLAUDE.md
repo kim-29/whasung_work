@@ -5,7 +5,7 @@
 ## 구조 (npm workspaces)
 - `server/` — Cloudflare Workers + Hono + Zod. D1(`whasung-agency`), KV(도면), Durable Object `Hub`(WebSocket), Web Push.
   - `src/index.ts` 라우터 마운트 / `auth.ts` 로그인·내 메일·직원 관리 / `routes-orders.ts` 주문 / `routes-misc.ts` 바·단가·업체·대시보드·Blender ingest / `routes-analytics.ts` 판매분석 / `routes-archive.ts` 백업·보관 / `orders-service.ts` 주문 생성·색상 분리·`PRICE_SQL` / `hub.ts` 실시간 알림 / `drawings-store.ts` 도면 KV
-  - `migrations/000N_*.sql` (현재 0001~0005), `test/*.test.ts` (vitest-pool-workers)
+  - `migrations/000N_*.sql` (현재 0001~0006), `test/*.test.ts` (vitest-pool-workers)
 - `web/` — Vite + React + TS + Tailwind v4, TanStack Query, HashRouter, PWA. GitHub Pages 배포(push 시 Actions 빌드).
   - `src/pages/*` 화면, `mail.tsx` 업체에 메일 보내기(웹메일 작성 URL), `api.ts`(kstToday 등), `auth.tsx`, `types.ts`
 - `blender/` — 도면 뷰어 템플릿(three.js, esbuild)과 `skill/whasung-blender-upload`(Blender→서버 업로드 스킬. **저장소에는 올리지 않고(.gitignore) 로컬에만 둔다**. `.skill` 패키징은 `PYTHONUTF8=1` 로 skill-creator 의 `package_skill`, 결과물은 저장소 밖 `C:\workspace\whasung-skill-package\`).
@@ -18,6 +18,7 @@
 
 ## 업무 규칙 (바꾸면 안 되는 것)
 - 금액은 저장하지 않는다: 무게 × 지시일 기준 `color_prices` 단가로 계산(첫 단가는 1970 effective_from으로 과거 전체 적용).
+- 추가 단가: `bar_database.price_add`(원/kg, 예: 방범창 4023 상/하단바·중간바 +500). 작업 생성·절단서 수정 때 들어 있는 바 중 최댓값을 `orders.price_add` 로 고정하고, 적용 단가 = 색상 단가 + `orders.price_add`(`PRICE_SQL`)를 **작업 전체 무게**에 곱한다. 변경 이력은 없고 이미 접수된 작업은 안 바뀐다. 작업장에는 노출 금지.
 - 한 주문 = 한 색상. 절단 주문은 색상별로 자동 분리(`group_id`), 도면은 `drawing_key` 공유. 제작은 단일 색상.
 - 상태 pending→making→unpaid→paid. `make_cost`: NULL=미입력, 0=입력됨, 제작 주문만, 완납 전까지 수정.
 - 날짜 집계는 KST(+9h). 환산수량 = 길이/6m, 소수 1자리 "본".
