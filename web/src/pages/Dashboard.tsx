@@ -4,7 +4,7 @@ import { api, fmtDate, fmtKg, fmtWon, kstMonth, kstToday } from '../api';
 import { useAuth } from '../auth';
 import { KIND_LABEL, STATUS_LABEL, type Color, type Kind, type Status } from '../types';
 import { Badge, Button, Card, Field, TrashIcon, useToast } from '../ui';
-import { orderMail, statementMail, useCompanyMail, type MailOrder } from '../mail';
+import { drawingRefs, orderMail, statementMail, useCompanyMail, type MailOrder } from '../mail';
 import { MakeCostBox, PriceLine, toStock, totalOf } from './money';
 import OrderDetailModal, { openDrawing } from './OrderDetailModal';
 
@@ -125,7 +125,7 @@ function Monthly() {
             {o.has_drawing ? <Button tone="plain" className="!min-h-9 text-sm" onClick={() => openDrawing(o.id).catch((e) => toast(e.message, 'error'))}>도면</Button> : null}
             {!o.has_drawing && o.drawing_archived ? <Badge>도면 삭제됨</Badge> : null}
             {(o.status === 'unpaid' || o.status === 'paid') && (
-              <Button tone="plain" className="!min-h-9 text-sm" onClick={() => mail.send(o.company, orderMail(o), mailWarning([o]))}>이메일로 내용 전송</Button>
+              <Button tone="plain" className="!min-h-9 text-sm" onClick={() => mail.send(o.company, orderMail(o), mailWarning([o]), drawingRefs([o], o.company))}>이메일로 내용 전송</Button>
             )}
             {isAdmin && (
               <Button tone="plain" className="ml-auto flex !min-h-9 items-center gap-1.5 text-sm text-red-700" title="삭제" aria-label="삭제" onClick={() => remove(o)}>
@@ -255,7 +255,7 @@ function Unpaid() {
             <div className="flex flex-wrap gap-2">
               <Button tone="plain" className="!min-h-9 text-sm" onClick={() => setDetail(r.id)}>세부내역</Button>
               {r.has_drawing ? <Button tone="plain" className="!min-h-9 text-sm" onClick={() => openDrawing(r.id).catch((e) => toast(e.message, 'error'))}>도면</Button> : null}
-              <Button tone="plain" className="!min-h-9 text-sm" onClick={() => mail.send(r.company, orderMail(r), mailWarning([r]))}>이메일로 내용 전송</Button>
+              <Button tone="plain" className="!min-h-9 text-sm" onClick={() => mail.send(r.company, orderMail(r), mailWarning([r]), drawingRefs([r], r.company))}>이메일로 내용 전송</Button>
               <span className="ml-auto flex items-center gap-2">
                 {noCost(r) && <span className="text-sm font-semibold text-red-600">제작비용을 입력하면 납입할 수 있습니다</span>}
                 {group.length > 1 && !group.some(noCost) && <Button tone="plain" className="!min-h-9 text-sm" onClick={() => payRows(group)}>같은 지시서 {group.length}건 함께 납입</Button>}
@@ -273,7 +273,7 @@ function Unpaid() {
 
 // ---------------------------------------------------------------- 업체별 미납
 interface CompanyDetailRow {
-  id: number; kind: Kind; color: Color | null; group_id: number | null;
+  id: number; has_drawing: number; kind: Kind; color: Color | null; group_id: number | null;
   ordered_at: string; completed_at: string | null; actual_weight: number | null;
   price_per_kg: number | null; price_add: number; amount: number | null; make_cost: number | null;
 }
@@ -372,7 +372,7 @@ function ByCompany() {
           </div>
           <div className="no-print mb-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
             <Button tone="plain" onClick={() => window.print()}>인쇄하기</Button>
-            <Button tone="plain" onClick={() => mail.send(company, statementMail(company, rows.map((r) => ({ ...r, company }) as MailOrder)), mailWarning(rows))}>이메일 전송</Button>
+            <Button tone="plain" onClick={() => mail.send(company, statementMail(company, rows.map((r) => ({ ...r, company }) as MailOrder)), mailWarning(rows), drawingRefs(rows, company))}>이메일 전송</Button>
             <Button tone="plain" disabled={chosen.length === 0} onClick={editSelected}>선택거래 수정</Button>
             <Button tone="success" disabled={chosen.length === 0 || chosenNoCost > 0} onClick={paySelected}>
               선택거래 납입처리{chosen.length ? ` (${chosen.length}건)` : ''}

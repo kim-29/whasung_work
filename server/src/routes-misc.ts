@@ -243,6 +243,7 @@ dashboard.get('/by-company', async (c) => {
   if (company) {
     const { results } = await c.env.DB.prepare(
       `SELECT o.id, o.kind, o.color, o.group_id, o.created_at AS ordered_at, o.completed_at, o.actual_weight,
+              o.drawing_key IS NOT NULL AS has_drawing,
               ${PRICE_SQL} AS price_per_kg, o.price_add, ROUND(o.actual_weight * ${PRICE_SQL}) AS amount, o.make_cost
          FROM orders o WHERE o.status = 'unpaid' AND o.company = ?1 ORDER BY o.completed_at, o.id`,
     )
