@@ -10,7 +10,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
  *     재질 이름이 DIM 으로 시작하거나 이름이 D숫자_ 로 시작하면 '치수선'으로 묶는다.
  * (2) window.__BARS__ = [{ id, name, length, color:"#rrggbb", positions:[x,y,z,...], indices:[a,b,c,...] }]
  *
- * window.__INFO__ = { title, note, color } (선택). color 는 주문 색상(화이트/블랙/실버/헨켈/기타)이며 모든 바를 그 색으로 칠한다.
+ * window.__INFO__ = { title, note, color, paint } (선택). paint 는 실제로 칠할 색(#rrggbb)이며 있으면 color 보다 우선한다. color 는 주문 색상(화이트/블랙/실버/헨켈/기타)이며 모든 바를 그 색으로 칠한다.
  * 단위는 mm(숫자 그대로).
  */
 const info = window.__INFO__ || {};
@@ -35,7 +35,11 @@ const ORDER_COLORS = {
   헨켈: { fill: '#c0a073', edge: '#6a5233' }, // 밝은 브론즈
   기타: { fill: '#8c9f7a', edge: '#4d5c40' }, // 그 밖의 색 (연한 올리브)
 };
-const PAINT = ORDER_COLORS[info.color] || ORDER_COLORS['실버'];
+// 분류는 '기타'여도 도면은 실제 색(info.paint, #rrggbb)으로 칠할 수 있다. 외곽선은 그 색을 어둡게 만든다.
+const darken = (hex, k = 0.55) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
+const PAINT = /^#[0-9a-fA-F]{6}$/.test(info.paint || '')
+  ? { fill: info.paint, edge: darken(info.paint) }
+  : ORDER_COLORS[info.color] || ORDER_COLORS['실버'];
 const DIM_GROUP = '치수선';
 const DIM_COLOR = 0xff2020; // 치수선 색 (밝은 배경·어두운 배경 모두에서 잘 보이는 빨간색)
 const BACKGROUNDS = { light: 0xf4f6f8, dark: 0x1b1d20 };
