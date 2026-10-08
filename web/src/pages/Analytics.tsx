@@ -104,7 +104,7 @@ export default function Analytics() {
         <>
           {/* 1. 자재 사용내역: 무게가 입력된 작업만 */}
           <Card className="space-y-3">
-            <h2 className="text-lg font-bold">{period} 자재 사용내역 <span className="text-sm font-normal text-slate-500">(지시일 기준 · 무게가 입력된 작업만)</span></h2>
+            <h2 className="text-lg font-bold">{period} 자재 사용내역 <span className="text-sm font-normal text-slate-500">(지시일 기준 · 무게가 입력된 작업만, 제작중인 작업도 무게 입력시 포함됨)</span></h2>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Stat label="예상 무게" value={fmtKg(d.totals.usage_theory_kg)} sub="무게가 입력된 작업만 · 절단서 기준" />
               <Stat label="실제 무게" value={fmtKg(d.totals.weight)} sub="무게가 입력된 작업만" />
@@ -121,7 +121,7 @@ export default function Analytics() {
               />
             </div>
             <div>
-              <p className="mb-1 text-sm font-semibold text-slate-700">바 종류별 사용량 (예상 무게 많은 순) <span className="font-normal text-slate-500">· 무게가 입력된 작업만, 절단서 기준 예상 무게, 색상별</span></p>
+              <p className="mb-1 text-sm font-semibold text-slate-700">바 종류별 사용량 (예상 무게 많은 순) <span className="font-normal text-slate-500">· 무게가 입력된 작업만, 무게 측정시 각 바 별로 측정하지 않아 예상무게 사용, 색상별</span></p>
               <RankBars
                 rows={d.bars.map((b) => ({
                   name: b.bar_name, value: b.theory_kg, text: fmtKg(b.theory_kg),
@@ -144,9 +144,10 @@ export default function Analytics() {
                 sub={<Lines>{[`미납 무게 ${fmtKg(d.totals.unpaid.weight)}`, `미납 금액 ${fmtWon(d.totals.unpaid.amount)}`]}</Lines>} />
               <Stat label="진행 건수" value={`${d.totals.active.orders}건`}
                 sub={<Lines>{[`예상 무게 ${fmtKg(d.totals.active.theory_kg)}`]}</Lines>} />
-              <Stat label="제작비용 미입력" value={`${d.totals.make_cost_missing}건`} warn={d.totals.make_cost_missing > 0} />
+              <Stat label="합계" value={`${d.totals.paid.orders + d.totals.unpaid.orders + d.totals.active.orders}건`}
+                sub={<Lines>{[`무게 ${fmtKg(d.totals.paid.weight + d.totals.unpaid.weight + d.totals.active.theory_kg)}`, `금액 ${fmtWon(d.totals.paid.amount + d.totals.unpaid.amount)}`]}</Lines>} />
             </div>
-            <p className="text-xs text-slate-500">금액은 실제 무게 × 단가이고, 제작 작업은 제작비용을 더한 값입니다. 진행은 대기·제작중인 작업입니다.</p>
+            <p className="text-xs text-slate-500">금액은 실제 무게 × 단가이고, 제작 작업은 제작비용 입력시 포함하였습니다. 진행은 대기·제작중인 작업입니다. 합계는 완납·미납·진행 카드를 모두 더한 값입니다(진행은 예상 무게이고 금액은 없습니다).</p>
             <div>
               <p className="mb-1 text-sm font-semibold text-slate-700">{unit} 완납 거래 금액 <span className="font-normal text-slate-500">· 완납한 작업만, 절단/제작</span></p>
               <BarChart

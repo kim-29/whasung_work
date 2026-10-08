@@ -5,8 +5,8 @@ import type { ReactNode } from 'react';
 export const YELLOW = '#eab308';
 export const GRAPHITE = '#3b4249';
 
-/** 거래 상태별 색: 완납=노란색, 미납=빨간색, 진행=검은색 */
-export const STATUS_FILL = { paid: '#eab308', unpaid: '#dc2626', active: '#1f2124' } as const;
+/** 거래 상태별 색: 완납=검은색, 미납=빨간색, 진행=노란색 */
+export const STATUS_FILL = { paid: '#1f2124', unpaid: '#dc2626', active: '#eab308' } as const;
 
 /** 알루미늄 색상별 그래프 색 (이름 → 색). 화이트는 흰 배경에서도 보이도록 옅은 회색에 테두리를 둔다 */
 export const COLOR_FILL: Record<string, string> = {
