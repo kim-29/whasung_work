@@ -111,21 +111,39 @@ async function candidates(env: AppEnv['Bindings'], months: number, limit = 300) 
   return results.map((r) => ({ ...r, ids: r.ids.split(',').map(Number) }));
 }
 
-/** 대상 도면을 최대 PURGE_BATCH 개 지운다. 작업 표시를 먼저 바꾸고(실패해도 도면은 그대로) 그다음 파일을 지운다. */
+/** 삭제 대상 개수 (목록을 읽지 않고 센다) */
+async function countCandidates(env: AppEnv['Bindings'], months: number) {
+  const r = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM (
+       SELECT 1 FROM orders WHERE drawing_key IS NOT NULL GROUP BY drawing_key
+       HAVING SUM(status != 'paid') = 0 AND MAX(paid_at) < datetime('now', ?1))`,
+  )
+    .bind(`-${months} months`)
+    .first<{ n: number }>();
+  return r?.n ?? 0;
+}
+
+/**
+ * 대상 도면을 최대 PURGE_BATCH 개 지운다. 파일(KV)을 먼저 지우고, 지우는 데 성공한 것만 작업에 '삭제됨' 표시를 한다.
+ * 파일 삭제가 실패한 도면은 표시를 바꾸지 않아 다음 실행(내일 자동 실행 또는 지금 삭제)에서 다시 시도된다.
+ * (표시를 먼저 바꾸면 실패한 파일이 대상에서 빠져 서버에 영원히 남는다.)
+ */
 export async function purgeOldDrawings(env: AppEnv['Bindings'], months: number, actor: string) {
   const list = await candidates(env, months, PURGE_BATCH);
-  if (list.length) {
+  const settled = await Promise.allSettled(list.map((c) => env.KV.delete(c.key)));
+  const done = list.filter((_, i) => settled[i].status === 'fulfilled');
+  const failed = list.length - done.length;
+  if (failed) console.error(`drawing purge: KV delete failed for ${failed} of ${list.length}`);
+  if (done.length) {
     await env.DB.batch([
-      ...list.map((c) => env.DB.prepare(`UPDATE orders SET drawing_key = NULL, drawing_archived_at = datetime('now') WHERE drawing_key = ?1`).bind(c.key)),
+      ...done.map((c) => env.DB.prepare(`UPDATE orders SET drawing_key = NULL, drawing_archived_at = datetime('now') WHERE drawing_key = ?1`).bind(c.key)),
       env.DB.prepare(`INSERT INTO audit_log (user_name, action, order_id, detail) VALUES (?1,'purge-drawings',NULL,?2)`).bind(
         actor,
-        JSON.stringify({ months, drawings: list.length, orders: list.flatMap((c) => c.ids) }),
+        JSON.stringify({ months, drawings: done.length, failed, orders: done.flatMap((c) => c.ids) }),
       ),
     ]);
-    await Promise.allSettled(list.map((c) => env.KV.delete(c.key)));
   }
-  const remaining = (await candidates(env, months, 1000)).length;
-  return { deleted: list.length, remaining };
+  return { deleted: done.length, failed, remaining: await countCandidates(env, months) };
 }
 
 /** 매일 한국 시간 00:00 자동 실행(cron). 설정된 기간을 쓰고, 결과를 마지막 실행 기록으로 남긴다. 실패해도 예외를 밖으로 던지지 않는다. */
@@ -133,7 +151,7 @@ export async function runScheduledPurge(env: AppEnv['Bindings']) {
   try {
     const months = await getRetentionMonths(env);
     const r = await purgeOldDrawings(env, months, '자동(매일 00:00)');
-    await env.KV.put(LAST_RUN_KEY, JSON.stringify({ at: new Date().toISOString(), months, deleted: r.deleted, remaining: r.remaining, auto: true }));
+    await env.KV.put(LAST_RUN_KEY, JSON.stringify({ at: new Date().toISOString(), months, deleted: r.deleted, failed: r.failed, remaining: r.remaining, auto: true }));
     return r;
   } catch (e) {
     console.error('scheduled purge failed', e);

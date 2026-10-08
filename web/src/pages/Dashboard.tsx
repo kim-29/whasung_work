@@ -39,12 +39,12 @@ export default function Dashboard() {
   );
 }
 
-/** 제작비용·단가가 비어 있으면 메일에 '미입력/단가 미설정'으로 나간다는 경고 문구 (없으면 undefined) */
-const mailWarning = (rows: { kind: Kind; make_cost: number | null; amount: number | null }[]) => {
+/** 제작비용·단가가 비어 있으면 메일·카톡 문구에 '미입력/단가 미설정'으로 나간다는 경고 문구 (없으면 undefined). what: '메일' 또는 '문구' */
+const mailWarning = (rows: { kind: Kind; make_cost: number | null; amount: number | null }[], what = '메일') => {
   const noMake = rows.filter((o) => o.kind === 'make' && o.make_cost == null).length;
   const noPrice = rows.filter((o) => o.amount == null).length;
   const parts = [noMake && `제작비용이 입력되지 않은 건이 ${noMake}건 있습니다.`, noPrice && `단가가 설정되지 않은 건이 ${noPrice}건 있습니다.`].filter(Boolean);
-  return parts.length ? parts.join('\n') + '\n메일에는 \"미입력\" 또는 \"단가 미설정\"으로 표시됩니다.' : undefined;
+  return parts.length ? parts.join('\n') + `\n${what}에는 \"미입력\" 또는 \"단가 미설정\"으로 표시됩니다.` : undefined;
 };
 
 const Th = ({ children, right }: { children?: React.ReactNode; right?: boolean }) => (
@@ -129,7 +129,7 @@ function Monthly() {
               <Button tone="plain" className="!min-h-9 text-sm" onClick={() => mail.send(o.company, orderMail(o), mailWarning([o]), drawingRefs([o], o.company))}>이메일로 내용 전송</Button>
             )}
             {(o.status === 'unpaid' || o.status === 'paid') && (
-              <Button tone="plain" className="!min-h-9 text-sm" onClick={() => kakao.send(orderKakaoText(o), drawingRefs([o], o.company))}>카톡으로 내용 전송</Button>
+              <Button tone="plain" className="!min-h-9 text-sm" onClick={() => kakao.send(orderKakaoText(o), drawingRefs([o], o.company), mailWarning([o], '문구'))}>카톡으로 내용 전송</Button>
             )}
             {isAdmin && (
               <Button tone="plain" className="ml-auto flex !min-h-9 items-center gap-1.5 text-sm text-red-700" title="삭제" aria-label="삭제" onClick={() => remove(o)}>
@@ -262,7 +262,7 @@ function Unpaid() {
               <Button tone="plain" className="!min-h-9 text-sm" onClick={() => setDetail(r.id)}>세부내역</Button>
               {r.has_drawing ? <Button tone="plain" className="!min-h-9 text-sm" onClick={() => openDrawing(r.id).catch((e) => toast(e.message, 'error'))}>도면</Button> : null}
               <Button tone="plain" className="!min-h-9 text-sm" onClick={() => mail.send(r.company, orderMail(r), mailWarning([r]), drawingRefs([r], r.company))}>이메일로 내용 전송</Button>
-              <Button tone="plain" className="!min-h-9 text-sm" onClick={() => kakao.send(orderKakaoText(r), drawingRefs([r], r.company))}>카톡으로 내용 전송</Button>
+              <Button tone="plain" className="!min-h-9 text-sm" onClick={() => kakao.send(orderKakaoText(r), drawingRefs([r], r.company), mailWarning([r], '문구'))}>카톡으로 내용 전송</Button>
               <span className="ml-auto flex items-center gap-2">
                 {noCost(r) && <span className="text-sm font-semibold text-red-600">제작비용을 입력하면 납입할 수 있습니다</span>}
                 {group.length > 1 && !group.some(noCost) && <Button tone="plain" className="!min-h-9 text-sm" onClick={() => payRows(group)}>같은 지시서 {group.length}건 함께 납입</Button>}
@@ -382,7 +382,7 @@ function ByCompany() {
           <div className="no-print mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             <Button tone="plain" onClick={() => window.print()}>인쇄하기</Button>
             <Button tone="plain" onClick={() => mail.send(company, statementMail(company, rows.map((r) => ({ ...r, company }) as MailOrder)), mailWarning(rows), drawingRefs(rows, company))}>이메일 전송</Button>
-            <Button tone="plain" onClick={() => kakao.send(statementKakaoText(company, rows.map((r) => ({ ...r, company }) as MailOrder)), drawingRefs(rows, company))}>카톡 전송</Button>
+            <Button tone="plain" onClick={() => kakao.send(statementKakaoText(company, rows.map((r) => ({ ...r, company }) as MailOrder)), drawingRefs(rows, company), mailWarning(rows, '문구'))}>카톡 전송</Button>
             <Button tone="plain" disabled={chosen.length === 0} onClick={editSelected}>선택거래 수정</Button>
             <Button tone="success" disabled={chosen.length === 0 || chosenNoCost > 0} onClick={paySelected}>
               선택거래 납입처리{chosen.length ? ` (${chosen.length}건)` : ''}

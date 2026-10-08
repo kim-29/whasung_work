@@ -223,12 +223,17 @@ function Bars() {
       <p className="mb-2 text-sm text-slate-500">무게는 1미터당 kg 입니다. 고쳐도 이미 접수된 작업의 무게는 바뀌지 않습니다. 자재 값이 더 비싼 바는 <b>추가 단가</b>(원/kg)를 넣으면, 그 바가 들어간 작업은 <b>작업 전체 무게</b>에 색상 단가 + 추가 단가가 적용됩니다. 이미 접수된 작업에는 적용되지 않습니다.</p>
       <div className="divide-y divide-slate-200">
         {q.data?.map((b) => (
-          <div key={b.id} className="flex items-center gap-2 py-2.5">
-            <span className="flex-1 text-base font-semibold">{b.name}</span>
-            {!!b.price_add && <Badge color="amber">단가 +{b.price_add.toLocaleString('ko-KR')}</Badge>}
-            <span className="text-base">{b.kg_per_m} kg/m</span>
-            <Button tone="plain" className="!min-h-9 text-sm" onClick={() => setEdit({ id: b.id, name: b.name, kg_per_m: String(b.kg_per_m), note: b.note ?? '', price_add: b.price_add ? String(b.price_add) : '' })}>수정</Button>
-            <Button tone="plain" className="!min-h-9 text-sm" onClick={() => remove(b)}>삭제</Button>
+          // 폰에서 버튼 글자가 세로로 깨지지 않도록: 이름(+단가 표시)이 윗줄, kg/m 와 버튼이 아랫줄 (넓은 화면은 한 줄)
+          <div key={b.id} className="flex flex-wrap items-center gap-x-2 gap-y-1.5 py-2.5">
+            <span className="flex min-w-0 basis-full flex-wrap items-center gap-2 text-base font-semibold sm:basis-0 sm:flex-1">
+              {b.name}
+              {!!b.price_add && <Badge color="amber">단가 +{b.price_add.toLocaleString('ko-KR')}</Badge>}
+            </span>
+            <span className="whitespace-nowrap text-base">{b.kg_per_m} kg/m</span>
+            <span className="ml-auto flex gap-2 sm:ml-0">
+              <Button tone="plain" className="!min-h-9 whitespace-nowrap text-sm" onClick={() => setEdit({ id: b.id, name: b.name, kg_per_m: String(b.kg_per_m), note: b.note ?? '', price_add: b.price_add ? String(b.price_add) : '' })}>수정</Button>
+              <Button tone="plain" className="!min-h-9 whitespace-nowrap text-sm" onClick={() => remove(b)}>삭제</Button>
+            </span>
           </div>
         ))}
         {q.data?.length === 0 && <p className="py-6 text-center text-slate-500">등록된 바가 없습니다. 먼저 바를 추가해 주세요.</p>}

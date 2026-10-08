@@ -42,21 +42,22 @@ function OrderCard({ o, siblings, isFront, onEdit }: { o: OrderSummary; siblings
   return (
     <Card className="space-y-2">
       {/* 세부내역·내용 수정 버튼은 오른쪽 위에 작게 두어 카드 높이를 줄인다 */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-lg font-bold">{o.company}</span>
-          <Badge color={o.status === 'pending' ? 'amber' : 'blue'}>{STATUS_LABEL[o.status]}</Badge>
-          <Badge>{KIND_LABEL[o.kind]}</Badge>
-          {o.color && <Badge color="slate">{o.color}</Badge>}
-          {siblings > 1 && <Badge color="slate">같은 지시서 {siblings}건</Badge>}
-          {o.has_unknown_bar ? <Badge color="red">미등록 바</Badge> : null}
-        </div>
+      {/* 폰에서 라벨이 한 줄씩 쌓이지 않도록: 윗줄은 업체명 + 버튼, 아랫줄에 라벨을 모아 둔다 */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 flex-1 truncate text-lg font-bold">{o.company}</span>
         <div className="flex shrink-0 gap-1.5">
-          <Button tone="plain" className="!min-h-9 !px-3 text-sm" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          <Button tone="plain" className="!min-h-9 !px-3 text-sm whitespace-nowrap" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
             세부내역 {open ? '▲' : '▼'}
           </Button>
-          {isFront && <Button tone="plain" className="!min-h-9 !px-3 text-sm" onClick={onEdit}>내용 수정</Button>}
+          {isFront && <Button tone="plain" className="!min-h-9 !px-3 text-sm whitespace-nowrap" onClick={onEdit}>내용 수정</Button>}
         </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Badge color={o.status === 'pending' ? 'amber' : 'blue'}>{STATUS_LABEL[o.status]}</Badge>
+        <Badge>{KIND_LABEL[o.kind]}</Badge>
+        {o.color && <Badge color="slate">{o.color}</Badge>}
+        {siblings > 1 && <Badge color="slate">같은 지시서 {siblings}건</Badge>}
+        {o.has_unknown_bar ? <Badge color="red">미등록 바</Badge> : null}
       </div>
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-slate-600">

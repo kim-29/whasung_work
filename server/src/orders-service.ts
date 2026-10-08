@@ -143,6 +143,15 @@ export async function replaceItems(env: Env, orderId: number, items: OrderInput[
   }>();
   const rate = new Map(bars.map((b) => [b.name, b.kg_per_m]));
   const addOf = new Map(bars.map((b) => [b.name, b.price_add]));
+  // 들어 있는 바의 종류가 그대로면(길이·수량·업체명만 고친 경우) 접수 때 고정한 추가 단가를 그대로 둔다.
+  // 바가 바뀐 경우에만 지금의 바 설정으로 다시 정한다. (바의 추가 단가를 나중에 바꿔도 접수된 작업의 단가가 수정만으로 바뀌지 않게)
+  const current = await env.DB.prepare(`SELECT bar_name FROM work_list WHERE order_id = ?1`).bind(orderId).all<{ bar_name: string }>();
+  const before = new Set(current.results.map((r) => r.bar_name));
+  const after = new Set(items.map((i) => i.bar_name));
+  const sameBars = before.size === after.size && [...after].every((n) => before.has(n));
+  const keptAdd = sameBars
+    ? (await env.DB.prepare(`SELECT price_add FROM orders WHERE id = ?1`).bind(orderId).first<{ price_add: number }>())?.price_add
+    : undefined;
   let total = 0;
   let unknown = 0;
   const stmts = [env.DB.prepare(`DELETE FROM work_list WHERE order_id = ?1`).bind(orderId)];
@@ -161,7 +170,7 @@ export async function replaceItems(env: Env, orderId: number, items: OrderInput[
   total = Math.round(total * 1000) / 1000;
   stmts.push(
     env.DB.prepare(`UPDATE orders SET theory_weight = ?1, has_unknown_bar = ?2, color = ?3, price_add = ?4 WHERE id = ?5`).bind(
-      total, unknown, items[0].color, priceAddOf(items, addOf), orderId,
+      total, unknown, items[0].color, keptAdd ?? priceAddOf(items, addOf), orderId,
     ),
   );
   await env.DB.batch(stmts);

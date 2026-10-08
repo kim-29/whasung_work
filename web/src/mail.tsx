@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { API_BASE, api, fmtDate, fmtKg, fmtWon, saveBlob } from './api';
 import { useAuth } from './auth';
 import { KIND_LABEL, MAIL_SERVICES, type Company, type Kind, type MailService, type Status } from './types';
@@ -232,6 +232,16 @@ function openCompose(
     const a = document.createElement('a');
     a.href = url;
     a.click();
+    // Gmail·Outlook 앱 전용 주소는 앱이 없으면 아무 반응이 없다. 잠시 뒤에도 이 화면이 그대로 보이면 기본 메일 앱으로 다시 연다.
+    if (IS_MOBILE && /^(googlegmail|ms-outlook):/.test(url)) {
+      const fallback = composeUrl('app', to, mail.subject, body, self);
+      window.setTimeout(() => {
+        if (document.visibilityState === 'visible') {
+          notify('앱이 열리지 않아 폰의 기본 메일 앱으로 엽니다.');
+          window.location.href = fallback;
+        }
+      }, 1800);
+    }
     return { state: 'opened', url };
   }
   const win = window.open(url, '_blank', 'noopener');
@@ -297,7 +307,10 @@ export function useCompanyMail(): { send: SendFn; prompt: ReactNode } {
     const { company, mail, drawings } = attachAsk;
     setBusy(true);
     try {
-      for (const d of drawings) await downloadDrawing(d);
+      for (const d of drawings) {
+        await downloadDrawing(d);
+        await new Promise((r) => setTimeout(r, 500)); // 연달아 받으면 브라우저가 막는 일이 있어 간격을 둔다
+      }
       setAttachAsk(null);
       setAttached(drawings);
       compose(company, mail);
@@ -368,6 +381,11 @@ export function useCompanyMail(): { send: SendFn; prompt: ReactNode } {
             <ul className="list-disc space-y-0.5 pl-5 text-base font-semibold">
               {attached.map((d) => <li key={d.id}>{d.filename}</li>)}
             </ul>
+            {attached.length > 1 && (
+              <p className="text-sm font-semibold text-amber-800">
+                파일이 {attached.length}개입니다. 브라우저가 "여러 파일 다운로드를 허용할까요?"라고 물으면 <b>허용</b>을 눌러 주세요. 다운로드 폴더에 위 파일이 모두 있는지 확인한 뒤 첨부하세요.
+              </p>
+            )}
             <Button className="w-full" onClick={() => setAttached(null)}>확인</Button>
           </div>
         </Modal>
@@ -435,25 +453,37 @@ async function shareLink(id: number): Promise<string> {
  * 카톡 버튼용. send(문구, 도면 목록) 를 부르면 문구를 보여 주는 창이 열리고, 도면이 있으면 "도면 링크 포함"을 고를 수 있다.
  * "문구 복사하기"를 누르면 클립보드에 복사된다. 사용하는 화면은 반환된 prompt 를 화면 어딘가에 그려 두어야 한다.
  */
-export function useKakaoText(): { send: (text: string, drawings?: DrawingRef[]) => void; prompt: ReactNode } {
+export function useKakaoText(): {
+  send: (text: string, drawings?: DrawingRef[], warn?: string) => void;
+  prompt: ReactNode;
+} {
   const toast = useToast();
   const [open, setOpen] = useState<{ text: string; drawings: DrawingRef[] } | null>(null);
   const [withLinks, setWithLinks] = useState(false);
   const [links, setLinks] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  // 창을 열거나 닫을 때마다 올라가는 번호. 늦게 도착한 도면 링크가 다른 거래의 창에 들어가지 않도록 가려내는 데 쓴다.
+  const gen = useRef(0);
+  const box = useRef<HTMLTextAreaElement>(null);
 
-  const close = () => {
-    setOpen(null);
+  const reset = () => {
+    gen.current += 1;
     setWithLinks(false);
     setLinks(null);
     setCopied(false);
+    setLoading(false);
   };
 
-  const send = (text: string, drawings: DrawingRef[] = []) => {
-    setWithLinks(false);
-    setLinks(null);
-    setCopied(false);
+  const close = () => {
+    reset();
+    setOpen(null);
+  };
+
+  const send = (text: string, drawings: DrawingRef[] = [], warn?: string) => {
+    // 이메일과 같이 제작비용·단가가 비어 있으면 먼저 알린다 (그대로 문구에 '미입력'으로 들어가기 때문)
+    if (warn && !window.confirm(`${warn}\n\n그래도 문구를 만들까요?`)) return;
+    reset();
     setOpen({ text, drawings });
   };
 
@@ -461,14 +491,18 @@ export function useKakaoText(): { send: (text: string, drawings?: DrawingRef[]) 
     setWithLinks(on);
     setCopied(false);
     if (!on || links || !open) return;
+    const mine = gen.current;
     setLoading(true);
     try {
-      setLinks(await Promise.all(open.drawings.map((d) => shareLink(d.id))));
+      const made = await Promise.all(open.drawings.map((d) => shareLink(d.id)));
+      if (mine === gen.current) setLinks(made); // 그 사이 창을 닫았거나 다른 거래를 열었다면 버린다
     } catch (e) {
-      setWithLinks(false);
-      toast((e as Error).message, 'error');
+      if (mine === gen.current) {
+        setWithLinks(false);
+        toast((e as Error).message, 'error');
+      }
     } finally {
-      setLoading(false);
+      if (mine === gen.current) setLoading(false);
     }
   };
 
@@ -490,6 +524,14 @@ export function useKakaoText(): { send: (text: string, drawings?: DrawingRef[]) 
         ? [open.text, '', ...linkLines].join('\n')
         : open.text;
 
+  // 문구가 길어도 잘리지 않게 입력칸 높이를 내용에 맞춘다 (너무 길면 스크롤)
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight + 2, 420)}px`;
+  }, [full, open]);
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(full);
@@ -502,7 +544,7 @@ export function useKakaoText(): { send: (text: string, drawings?: DrawingRef[]) 
   const prompt = open && (
     <Modal title="카카오톡으로 내용 보내기" onClose={close}>
       <div className="space-y-3">
-        <textarea readOnly rows={Math.min(14, full.split('\n').length + 1)} value={full}
+        <textarea ref={box} readOnly rows={4} value={full}
           className="w-full rounded-xl border border-slate-400 bg-slate-50 p-3 text-base"
           onFocus={(e) => e.currentTarget.select()} />
         {open.drawings.length > 0 && (

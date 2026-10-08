@@ -119,6 +119,13 @@ describe('제작비용 · 업체 · 묶음 납입 · 한국 시간', () => {
     expect(await get(mixed)).toMatchObject({ price_per_kg: 2000, price_add: 0 });
     await send('PATCH', `/api/orders/${mixed}`, { items: [{ bar_name: 'PA-상하단바', length_mm: 1000, qty: 10, color: '블랙' }] }, t);
     expect(await get(mixed)).toMatchObject({ price_per_kg: 2900, price_add: 900 });
+    // 바 종류가 그대로인 수정(제작비용·길이·수량 등)은 접수 때 고정한 추가 단가를 바꾸지 않는다
+    await send('PUT', `/api/bars/${pricey.id}`, { name: 'PA-상하단바', kg_per_m: 1, price_add: 700 }, t);
+    await send('PATCH', `/api/orders/${mixed}`, { items: [{ bar_name: 'PA-상하단바', length_mm: 2000, qty: 5, color: '블랙' }] }, t);
+    expect(await get(mixed)).toMatchObject({ price_per_kg: 2900, price_add: 900 });
+    // price_add 를 보내지 않는 수정(예전 화면)은 추가 단가를 0으로 지우지 않는다
+    expect((await send('PUT', `/api/bars/${pricey.id}`, { name: 'PA-상하단바', kg_per_m: 1 }, t)).status).toBe(200);
+    expect((await (await call('/api/bars', { token: t })).json<{ name: string; price_add: number }[]>()).find((b) => b.name === 'PA-상하단바')?.price_add).toBe(700);
     // 음수·소수 추가 단가는 거절
     expect((await send('POST', '/api/bars', { name: 'PA-나쁨', kg_per_m: 1, price_add: -1 }, t)).status).toBe(400);
   });

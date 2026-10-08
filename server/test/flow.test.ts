@@ -189,6 +189,13 @@ describe('PIN 로그인 · 주문 흐름', () => {
     expect(await opened.text()).toBe(html);
     expect(opened.headers.get('Content-Security-Policy')).toContain('sandbox');
 
+    // 작업장 계정에는 바 목록의 추가 단가(금액 정보)를 내려주지 않는다
+    const wsBars = await (await call('/api/bars', { token: w.token })).json<Record<string, unknown>[]>();
+    expect(wsBars.length).toBeGreaterThan(0);
+    expect(wsBars.every((b) => !('price_add' in b))).toBe(true);
+    const adminBars = await (await call('/api/bars', { token: admin.token })).json<Record<string, unknown>[]>();
+    expect(adminBars.every((b) => 'price_add' in b)).toBe(true);
+
     // 공유 링크: 직원·관리자는 ?days 로 며칠간 열 수 있는 링크를 만들 수 있고(최대 30일), 작업장은 항상 10분
     const expOf = (p: string) => Number(new URL(`https://x${p}`).searchParams.get('exp')) - Math.floor(Date.now() / 1000);
     const shared = await (await call(`/api/orders/${id}/drawing-link?days=7`, { token: admin.token })).json<{ path: string }>();

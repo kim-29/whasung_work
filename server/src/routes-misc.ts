@@ -11,9 +11,9 @@ import type { AppEnv } from './types';
 export const bars = new Hono<AppEnv>();
 
 bars.get('/', anyUser, async (c) => {
-  const { results } = await c.env.DB.prepare(
-    `SELECT id, name, kg_per_m, note, price_add FROM bar_database WHERE active = 1 ORDER BY name`,
-  ).all();
+  // 추가 단가는 금액 정보라서 작업장 계정에는 내려주지 않는다
+  const cols = c.get('user').role === 'workshop' ? 'id, name, kg_per_m, note' : 'id, name, kg_per_m, note, price_add';
+  const { results } = await c.env.DB.prepare(`SELECT ${cols} FROM bar_database WHERE active = 1 ORDER BY name`).all();
   return c.json(results);
 });
 
@@ -22,7 +22,8 @@ const barSchema = z.object({
   kg_per_m: z.number().positive().max(1000),
   note: z.string().max(200).optional().default(''),
   // 추가 단가(원/kg): 이 바가 들어간 작업은 색상 단가에 이 금액을 더한다 (작업 전체 무게에 적용)
-  price_add: z.number().int().min(0).max(1_000_000).optional().default(0),
+  // 보내지 않으면 새 바는 0, 수정은 기존 값 유지 (price_add 를 모르는 예전 화면이 수정해도 0으로 지워지지 않게)
+  price_add: z.number().int().min(0).max(1_000_000).optional(),
 });
 
 bars.post('/', frontOnly, async (c) => {
@@ -34,12 +35,12 @@ bars.post('/', frontOnly, async (c) => {
   if (exists?.active) return c.json({ error: '이미 등록된 바 이름입니다.' }, 409);
   if (exists) {
     await c.env.DB.prepare(`UPDATE bar_database SET kg_per_m = ?1, note = ?2, price_add = ?3, active = 1 WHERE id = ?4`)
-      .bind(body.data.kg_per_m, body.data.note, body.data.price_add, exists.id)
+      .bind(body.data.kg_per_m, body.data.note, body.data.price_add ?? 0, exists.id)
       .run();
     return c.json({ id: exists.id }, 201);
   }
   const r = await c.env.DB.prepare(`INSERT INTO bar_database (name, kg_per_m, note, price_add) VALUES (?1,?2,?3,?4)`)
-    .bind(body.data.name, body.data.kg_per_m, body.data.note, body.data.price_add)
+    .bind(body.data.name, body.data.kg_per_m, body.data.note, body.data.price_add ?? 0)
     .run();
   return c.json({ id: r.meta.last_row_id }, 201);
 });
@@ -49,8 +50,8 @@ bars.put('/:id', frontOnly, async (c) => {
   const body = barSchema.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: '바 이름과 미터당 무게(kg/m)를 확인해 주세요.' }, 400);
   try {
-    await c.env.DB.prepare(`UPDATE bar_database SET name = ?1, kg_per_m = ?2, note = ?3, price_add = ?4 WHERE id = ?5`)
-      .bind(body.data.name, body.data.kg_per_m, body.data.note, body.data.price_add, Number(c.req.param('id')))
+    await c.env.DB.prepare(`UPDATE bar_database SET name = ?1, kg_per_m = ?2, note = ?3, price_add = COALESCE(?4, price_add) WHERE id = ?5`)
+      .bind(body.data.name, body.data.kg_per_m, body.data.note, body.data.price_add ?? null, Number(c.req.param('id')))
       .run();
   } catch {
     return c.json({ error: '이미 등록된 바 이름입니다.' }, 409);

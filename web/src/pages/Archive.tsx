@@ -55,16 +55,23 @@ export function ArchiveCard() {
       toast(`완납 후 ${m()}개월이 지난 도면을 지우도록 저장했습니다. 매일 한국 시간 00:00에 자동으로 지워집니다.`);
     });
 
-  // 지금 삭제: 한 번에 일부만 지우므로 남은 것이 없을 때까지 이어서 부른다 (확인 단계 없이 바로 지운다)
+  // 지금 삭제: 한 번에 일부만 지우므로 남은 것이 없을 때까지 이어서 부른다 (확인 단계 없이 바로 지운다).
+  // 입력칸의 저장 안 한 값이 아니라 **저장된 기간**(자동 삭제와 같은 기간)으로만 지운다.
   const purgeNow = () =>
     run('purge', async () => {
       let total = 0;
+      let failed = 0;
       for (let i = 0; i < 50; i++) {
-        const r = await api<{ deleted: number; remaining: number }>('/admin/archive/purge', { body: { months: m() } });
+        const r = await api<{ deleted: number; failed: number; remaining: number }>('/admin/archive/purge', { body: {} });
         total += r.deleted;
+        failed = r.failed;
         if (r.remaining === 0 || r.deleted === 0) break;
       }
-      toast(total ? `완납 후 ${m()}개월이 지난 도면 ${total}개를 지웠습니다.` : `지울 도면이 없습니다. (납입이 끝난 지 ${m()}개월이 지난 도면이 없습니다)`);
+      toast(
+        total ? `완납 후 ${saved}개월이 지난 도면 ${total}개를 지웠습니다.${failed ? ` (${failed}개는 지우지 못해 다음에 다시 시도합니다)` : ''}`
+          : `지울 도면이 없습니다. (납입이 끝난 지 ${saved}개월이 지난 도면이 없습니다)`,
+        failed ? 'error' : 'ok',
+      );
       qc.invalidateQueries();
     });
 
@@ -106,8 +113,8 @@ export function ArchiveCard() {
           자동 삭제는 <b>매일 한국 시간 00:00</b>에 저장된 기간(현재 <b>{saved}개월</b>)으로 실행됩니다.
           {summary.data?.last_run && <> 마지막 실행: {fmtDate(summary.data.last_run.at.replace('T', ' ').slice(0, 19), true)} ({summary.data.last_run.auto ? '자동' : '직접'}, {summary.data.last_run.deleted}개 삭제)</>}
         </p>
-        <Button tone="danger" disabled={!!busy} onClick={purgeNow}>{busy === 'purge' ? '지우는 중...' : '지금 바로 삭제하기'}</Button>
-        <p className="text-sm text-slate-500">누르지 않아도 매일 00:00에 자동으로 지워집니다. 한 번에 최대 40개씩 지우며 남은 것은 다음 날 이어서 지웁니다.</p>
+        <Button tone="danger" disabled={!!busy} onClick={purgeNow}>{busy === 'purge' ? '지우는 중...' : `지금 바로 삭제하기 (저장된 기간 ${saved}개월)`}</Button>
+        <p className="text-sm text-slate-500">저장된 기간으로 지웁니다. 위 입력칸을 바꿨다면 먼저 "기간 저장"을 눌러야 적용됩니다. 누르지 않아도 매일 00:00에 자동으로 지워집니다. 한 번에 최대 40개씩 지우며 남은 것은 다음 날 이어서 지웁니다.</p>
         {summary.data && summary.data.archived_orders > 0 && (
           <p className="text-sm text-slate-500">지금까지 도면이 삭제된 작업 {summary.data.archived_orders}건. 도면 파일(.html)이 남아 있다면 작업의 "도면 보기"에서 다시 올려 복원할 수 있습니다.</p>
         )}
