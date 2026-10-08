@@ -5,6 +5,9 @@ import type { ReactNode } from 'react';
 export const YELLOW = '#eab308';
 export const GRAPHITE = '#3b4249';
 
+/** 거래 상태별 색: 완납=노란색, 미납=빨간색, 진행=검은색 */
+export const STATUS_FILL = { paid: '#eab308', unpaid: '#dc2626', active: '#1f2124' } as const;
+
 /** 알루미늄 색상별 그래프 색 (이름 → 색). 화이트는 흰 배경에서도 보이도록 옅은 회색에 테두리를 둔다 */
 export const COLOR_FILL: Record<string, string> = {
   화이트: '#e9ecef',
@@ -121,7 +124,7 @@ export interface RankRow {
 }
 
 /** 많은 순 순위 막대 (가로) */
-export function RankBars({ rows, color = YELLOW, empty = '내용이 없습니다.' }: { rows: RankRow[]; color?: string; empty?: ReactNode }) {
+export function RankBars({ rows, color = YELLOW, empty = '내용이 없습니다.', unit = 'kg' }: { rows: RankRow[]; color?: string; empty?: ReactNode; unit?: string }) {
   if (rows.length === 0) return <p className="py-6 text-center text-slate-500">{empty}</p>;
   const max = Math.max(...rows.map((r) => r.value), 1);
   return (
@@ -135,7 +138,7 @@ export function RankBars({ rows, color = YELLOW, empty = '내용이 없습니다
           <div className="mt-0.5 h-3 rounded-sm bg-slate-200">
             <div className="flex h-3 overflow-hidden rounded-sm" style={{ width: `${Math.max(2, (r.value / max) * 100)}%`, background: r.parts ? undefined : color }}>
               {r.parts?.filter((p) => p.value > 0).map((p) => (
-                <div key={p.name} title={`${p.name} ${p.value.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}kg`}
+                <div key={p.name} title={`${p.name} ${p.value.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}${unit}`}
                   style={{ width: `${(p.value / r.value) * 100}%`, background: p.color, boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,0.35)' }} />
               ))}
             </div>

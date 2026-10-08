@@ -1,22 +1,58 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { api, fmtKg, fmtWon, kstMonth } from '../api';
-import { BarChart, COLOR_FILL, GRAPHITE, RankBars, Stat, short, YELLOW } from '../charts';
+import { BarChart, COLOR_FILL, GRAPHITE, RankBars, STATUS_FILL, Stat, short, YELLOW } from '../charts';
 import { Card } from '../ui';
 import { COLORS } from '../types';
+
+interface Slot {
+  label: string;
+  paid: { orders: number; weight: number; amount: number; cut_amount: number; make_amount: number };
+  unpaid: { orders: number; weight: number; amount: number };
+  active: { orders: number; theory_kg: number };
+  usage_m: number;
+  usage_theory_kg: number;
+  weight: number;
+  weight_by_color: Record<string, number>;
+}
 
 interface AnalyticsData {
   mode: 'year' | 'month';
   key: string;
-  series: { label: string; orders: number; weight: number; weight_by_color: Record<string, number>; amount: number; make_cost: number; cut_amount: number; make_amount: number; usage_m: number }[];
+  series: Slot[];
   totals: {
-    orders: number; weight: number; amount: number; make_cost: number; cut_amount: number; make_amount: number; usage_m: number;
-    bar_kinds: number; paid: number; unpaid: number; make_cost_missing: number;
+    usage_m: number; usage_theory_kg: number; weight: number; bar_kinds: number;
+    paid: { orders: number; weight: number; amount: number };
+    unpaid: { orders: number; weight: number; amount: number };
+    active: { orders: number; theory_kg: number };
+    make_cost_missing: number;
   };
-  bars: { bar_name: string; total_m: number; weight_kg: number; by_color: Record<string, number> }[];
-  companies_by_count: { company: string; orders: number }[];
-  companies_by_weight: { company: string; weight: number }[];
+  bars: { bar_name: string; total_m: number; theory_kg: number; by_color: Record<string, number> }[];
+  companies_by_count: { company: string; paid: number; unpaid: number; active: number }[];
+  companies_by_weight: { company: string; paid: number; unpaid: number; active: number }[];
 }
+
+/** 색 설명 (그래프 아래) */
+function Legend({ items }: { items: { name: string; color: string }[] }) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-600">
+      {items.map((i) => (
+        <span key={i.name} className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-3 w-3 rounded-sm border border-slate-400" style={{ background: i.color }} />{i.name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+const STATUS_LEGEND = [
+  { name: '완납', color: STATUS_FILL.paid },
+  { name: '미납', color: STATUS_FILL.unpaid },
+  { name: '진행', color: STATUS_FILL.active },
+];
+
+/** 카드 아래 작은 두 줄 */
+const Lines = ({ children }: { children: ReactNode[] }) => <>{children.map((c, i) => <span key={i} className="block">{c}</span>)}</>;
 
 export default function Analytics() {
   const [mode, setMode] = useState<'year' | 'month'>('month');
@@ -56,7 +92,9 @@ export default function Analytics() {
         ) : (
           <input type="month" value={month} aria-label="조회할 달" onChange={(e) => e.target.value && setMonth(e.target.value)} />
         )}
-        <p className="text-sm text-slate-500">모든 집계는 <b>지시일</b>(작업지시서를 보낸 날, 한국 시간) 기준입니다. 진행 중인 작업도 포함됩니다.</p>
+        <p className="text-sm text-slate-500">
+          모든 집계는 <b>지시일</b>(작업지시서를 보낸 날, 한국 시간)이 속한 {mode === 'year' ? '해' : '달'}에 넣습니다. 무게가 다른 달에 입력되었거나 아직 납입 전이어도 지시한 {mode === 'year' ? '해' : '달'}에 들어갑니다.
+        </p>
       </Card>
 
       {q.isLoading && <p className="text-base">불러오는 중...</p>}
@@ -64,12 +102,13 @@ export default function Analytics() {
 
       {d && (
         <>
-          {/* 1. 자재 사용내역 */}
+          {/* 1. 자재 사용내역: 무게가 입력된 작업만 */}
           <Card className="space-y-3">
-            <h2 className="text-lg font-bold">{period} 자재 사용내역 <span className="text-sm font-normal text-slate-500">(지시일 기준)</span></h2>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <h2 className="text-lg font-bold">{period} 자재 사용내역 <span className="text-sm font-normal text-slate-500">(지시일 기준 · 무게가 입력된 작업만)</span></h2>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Stat label="예상 무게" value={fmtKg(d.totals.usage_theory_kg)} sub="무게가 입력된 작업만 · 절단서 기준" />
               <Stat label="실제 무게" value={fmtKg(d.totals.weight)} sub="무게가 입력된 작업만" />
-              <Stat label="총 사용 길이" value={`${d.totals.usage_m.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}m`} sub="진행 중인 작업 포함" />
+              <Stat label="총 사용 길이" value={`${d.totals.usage_m.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}m`} sub="무게가 입력된 작업만" />
               <Stat label="바 종류" value={`${d.totals.bar_kinds}종`} sub="무게가 입력된 작업 기준" />
             </div>
             <div>
@@ -82,57 +121,54 @@ export default function Analytics() {
               />
             </div>
             <div>
-              <p className="mb-1 text-sm font-semibold text-slate-700">바 종류별 사용량 (무게 많은 순) <span className="font-normal text-slate-500">· 실제 무게, 색상별</span></p>
-              <p className="mb-1.5 text-xs text-slate-500">작업장이 입력한 작업 전체의 실제 무게를 절단서의 바별 예상 무게 비율로 나눈 값입니다. 무게가 입력된 작업만 집계합니다.</p>
+              <p className="mb-1 text-sm font-semibold text-slate-700">바 종류별 사용량 (예상 무게 많은 순) <span className="font-normal text-slate-500">· 무게가 입력된 작업만, 절단서 기준 예상 무게, 색상별</span></p>
               <RankBars
                 rows={d.bars.map((b) => ({
-                  name: b.bar_name, value: b.weight_kg, text: fmtKg(b.weight_kg),
-                  sub: barColors.filter((c) => b.by_color[c] > 0).map((c) => `${c} ${fmtKg(b.by_color[c])}`).join(' · '),
+                  name: b.bar_name, value: b.theory_kg, text: fmtKg(b.theory_kg),
+                  sub: `${b.total_m.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}m · ${barColors.filter((c) => b.by_color[c] > 0).map((c) => `${c} ${fmtKg(b.by_color[c])}`).join(' · ')}`,
                   parts: barColors.map((c) => ({ name: c, color: COLOR_FILL[c] ?? YELLOW, value: b.by_color[c] ?? 0 })),
                 }))}
-                empty="이 기간에 사용한 자재가 없습니다."
+                empty="무게가 입력된 작업이 없습니다."
               />
-              {barColors.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-600">
-                  {barColors.map((c) => (
-                    <span key={c} className="inline-flex items-center gap-1.5">
-                      <span className="inline-block h-3 w-3 rounded-sm border border-slate-400" style={{ background: COLOR_FILL[c] ?? YELLOW }} />{c}
-                    </span>
-                  ))}
-                </div>
-              )}
+              {barColors.length > 0 && <Legend items={barColors.map((c) => ({ name: c, color: COLOR_FILL[c] ?? YELLOW }))} />}
             </div>
           </Card>
 
-          {/* 2. 거래내역 */}
+          {/* 2. 거래내역: 완납 / 미납 / 진행 */}
           <Card className="space-y-3">
             <h2 className="text-lg font-bold">{period} 거래내역 <span className="text-sm font-normal text-slate-500">(지시일 기준)</span></h2>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <Stat label="거래 건수" value={`${d.totals.orders}건`} sub={`완납 ${d.totals.paid}건 · 미납 ${d.totals.unpaid}건`} />
-              <Stat label="판매 무게" value={fmtKg(d.totals.weight)} />
-              <Stat label="합계 (제작비용 포함)" value={fmtWon(d.totals.amount + d.totals.make_cost)} />
-              <Stat label="절단 금액" value={fmtWon(d.totals.cut_amount)} sub="절단만 한 작업" />
-              <Stat label="제작 금액" value={fmtWon(d.totals.make_amount)} sub={`제작비용 ${fmtWon(d.totals.make_cost)} 포함`} />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Stat label="완납 건수" value={`${d.totals.paid.orders}건`}
+                sub={<Lines>{[`완납 무게 ${fmtKg(d.totals.paid.weight)}`, `금액 ${fmtWon(d.totals.paid.amount)}`]}</Lines>} />
+              <Stat label="미납 건수" value={`${d.totals.unpaid.orders}건`}
+                sub={<Lines>{[`미납 무게 ${fmtKg(d.totals.unpaid.weight)}`, `미납 금액 ${fmtWon(d.totals.unpaid.amount)}`]}</Lines>} />
+              <Stat label="진행 건수" value={`${d.totals.active.orders}건`}
+                sub={<Lines>{[`예상 무게 ${fmtKg(d.totals.active.theory_kg)}`]}</Lines>} />
               <Stat label="제작비용 미입력" value={`${d.totals.make_cost_missing}건`} warn={d.totals.make_cost_missing > 0} />
             </div>
+            <p className="text-xs text-slate-500">금액은 실제 무게 × 단가이고, 제작 작업은 제작비용을 더한 값입니다. 진행은 대기·제작중인 작업입니다.</p>
             <div>
-              <p className="mb-1 text-sm font-semibold text-slate-700">{unit} 거래 금액</p>
+              <p className="mb-1 text-sm font-semibold text-slate-700">{unit} 완납 거래 금액 <span className="font-normal text-slate-500">· 완납한 작업만, 절단/제작</span></p>
               <BarChart
                 labels={d.series.map((s) => s.label)}
                 tickLabels={tickLabels}
                 series={[
-                  { name: '절단', color: YELLOW, values: d.series.map((s) => s.cut_amount) },
-                  { name: '제작', color: GRAPHITE, values: d.series.map((s) => s.make_amount) },
+                  { name: '절단', color: YELLOW, values: d.series.map((s) => s.paid.cut_amount) },
+                  { name: '제작', color: GRAPHITE, values: d.series.map((s) => s.paid.make_amount) },
                 ]}
                 format={short}
               />
             </div>
             <div>
-              <p className="mb-1 text-sm font-semibold text-slate-700">{unit} 거래 건수</p>
+              <p className="mb-1 text-sm font-semibold text-slate-700">{unit} 거래 건수 <span className="font-normal text-slate-500">· 완납/미납/진행</span></p>
               <BarChart
                 labels={d.series.map((s) => s.label)}
                 tickLabels={tickLabels}
-                series={[{ name: '건수', color: GRAPHITE, values: d.series.map((s) => s.orders) }]}
+                series={[
+                  { name: '완납', color: STATUS_FILL.paid, values: d.series.map((s) => s.paid.orders) },
+                  { name: '미납', color: STATUS_FILL.unpaid, values: d.series.map((s) => s.unpaid.orders) },
+                  { name: '진행', color: STATUS_FILL.active, values: d.series.map((s) => s.active.orders) },
+                ]}
                 format={(n) => String(Math.round(n))}
               />
             </div>
@@ -142,20 +178,42 @@ export default function Analytics() {
           <Card className="space-y-2">
             <h2 className="text-lg font-bold">{period} 업체별 의뢰건수 <span className="text-sm font-normal text-slate-500">(많은 순)</span></h2>
             <RankBars
-              rows={d.companies_by_count.map((c) => ({ name: c.company, value: c.orders, text: `${c.orders}건` }))}
+              unit="건"
+              rows={d.companies_by_count.map((c) => ({
+                name: c.company,
+                value: c.paid + c.unpaid + c.active,
+                text: `${c.paid + c.unpaid + c.active}건`,
+                sub: `완납 ${c.paid} · 미납 ${c.unpaid} · 진행 ${c.active}`,
+                parts: [
+                  { name: '완납', color: STATUS_FILL.paid, value: c.paid },
+                  { name: '미납', color: STATUS_FILL.unpaid, value: c.unpaid },
+                  { name: '진행', color: STATUS_FILL.active, value: c.active },
+                ],
+              }))}
               empty="이 기간의 의뢰가 없습니다."
             />
+            {d.companies_by_count.length > 0 && <Legend items={STATUS_LEGEND} />}
           </Card>
 
           {/* 4. 업체별 판매량(무게) */}
           <Card className="space-y-2">
             <h2 className="text-lg font-bold">{period} 업체별 판매량(무게) <span className="text-sm font-normal text-slate-500">(많은 순)</span></h2>
-            <p className="text-sm text-slate-500">작업장이 무게를 입력한 작업만 합산합니다.</p>
+            <p className="text-sm text-slate-500">완납·미납은 작업장이 입력한 실제 무게, 진행은 예상 무게입니다.</p>
             <RankBars
-              color={GRAPHITE}
-              rows={d.companies_by_weight.map((c) => ({ name: c.company, value: c.weight, text: fmtKg(c.weight) }))}
-              empty="무게가 입력된 작업이 없습니다."
+              rows={d.companies_by_weight.map((c) => ({
+                name: c.company,
+                value: c.paid + c.unpaid + c.active,
+                text: fmtKg(c.paid + c.unpaid + c.active),
+                sub: `완납 ${fmtKg(c.paid)} · 미납 ${fmtKg(c.unpaid)} · 진행 ${fmtKg(c.active)}`,
+                parts: [
+                  { name: '완납', color: STATUS_FILL.paid, value: c.paid },
+                  { name: '미납', color: STATUS_FILL.unpaid, value: c.unpaid },
+                  { name: '진행', color: STATUS_FILL.active, value: c.active },
+                ],
+              }))}
+              empty="무게가 있는 작업이 없습니다."
             />
+            {d.companies_by_weight.length > 0 && <Legend items={STATUS_LEGEND} />}
           </Card>
         </>
       )}
