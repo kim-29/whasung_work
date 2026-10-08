@@ -8,12 +8,12 @@ import { COLORS } from '../types';
 interface AnalyticsData {
   mode: 'year' | 'month';
   key: string;
-  series: { label: string; orders: number; weight: number; weight_by_color: Record<string, number>; amount: number; make_cost: number; cut_amount: number; make_amount: number; usage_m: number; usage_kg: number }[];
+  series: { label: string; orders: number; weight: number; weight_by_color: Record<string, number>; amount: number; make_cost: number; cut_amount: number; make_amount: number; usage_m: number }[];
   totals: {
-    orders: number; weight: number; amount: number; make_cost: number; cut_amount: number; make_amount: number; usage_m: number; usage_kg: number;
+    orders: number; weight: number; amount: number; make_cost: number; cut_amount: number; make_amount: number; usage_m: number;
     bar_kinds: number; paid: number; unpaid: number; make_cost_missing: number;
   };
-  bars: { bar_name: string; total_m: number; theory_kg: number; by_color: Record<string, number> }[];
+  bars: { bar_name: string; total_m: number; weight_kg: number; by_color: Record<string, number> }[];
   companies_by_count: { company: string; orders: number }[];
   companies_by_weight: { company: string; weight: number }[];
 }
@@ -67,11 +67,10 @@ export default function Analytics() {
           {/* 1. 자재 사용내역 */}
           <Card className="space-y-3">
             <h2 className="text-lg font-bold">{period} 자재 사용내역 <span className="text-sm font-normal text-slate-500">(지시일 기준)</span></h2>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Stat label="총 사용 길이" value={`${d.totals.usage_m.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}m`} />
-              <Stat label="예상 무게" value={fmtKg(d.totals.usage_kg)} sub="절단서 기준" />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <Stat label="실제 무게" value={fmtKg(d.totals.weight)} sub="무게가 입력된 작업만" />
-              <Stat label="바 종류" value={`${d.totals.bar_kinds}종`} />
+              <Stat label="총 사용 길이" value={`${d.totals.usage_m.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}m`} sub="진행 중인 작업 포함" />
+              <Stat label="바 종류" value={`${d.totals.bar_kinds}종`} sub="무게가 입력된 작업 기준" />
             </div>
             <div>
               <p className="mb-1 text-sm font-semibold text-slate-700">{unit} 실제 무게 (kg) <span className="font-normal text-slate-500">· 작업장이 입력한 무게, 색상별</span></p>
@@ -83,11 +82,12 @@ export default function Analytics() {
               />
             </div>
             <div>
-              <p className="mb-1 text-sm font-semibold text-slate-700">바 종류별 사용량 (무게 많은 순) <span className="font-normal text-slate-500">· 예상 무게, 색상별</span></p>
+              <p className="mb-1 text-sm font-semibold text-slate-700">바 종류별 사용량 (무게 많은 순) <span className="font-normal text-slate-500">· 실제 무게, 색상별</span></p>
+              <p className="mb-1.5 text-xs text-slate-500">작업장이 입력한 작업 전체의 실제 무게를 절단서의 바별 예상 무게 비율로 나눈 값입니다. 무게가 입력된 작업만 집계합니다.</p>
               <RankBars
                 rows={d.bars.map((b) => ({
-                  name: b.bar_name, value: b.theory_kg, text: fmtKg(b.theory_kg),
-                  sub: `${b.total_m.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}m · ${barColors.filter((c) => b.by_color[c] > 0).map((c) => `${c} ${fmtKg(b.by_color[c])}`).join(' · ')}`,
+                  name: b.bar_name, value: b.weight_kg, text: fmtKg(b.weight_kg),
+                  sub: barColors.filter((c) => b.by_color[c] > 0).map((c) => `${c} ${fmtKg(b.by_color[c])}`).join(' · '),
                   parts: barColors.map((c) => ({ name: c, color: COLOR_FILL[c] ?? YELLOW, value: b.by_color[c] ?? 0 })),
                 }))}
                 empty="이 기간에 사용한 자재가 없습니다."

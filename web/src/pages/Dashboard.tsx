@@ -87,6 +87,22 @@ function Monthly() {
     }
   };
 
+  // 월간 거래내역에서도 미납 건을 납입 처리한다. 제작은 제작비용(0원 포함)을 입력해야 납입할 수 있다 (서버도 같은 규칙).
+  type MonthlyRow = NonNullable<typeof q.data>['orders'][number];
+  const noCost = (o: MonthlyRow) => o.kind === 'make' && o.make_cost == null;
+  const payOne = async (o: MonthlyRow) => {
+    const total = totalOf(o.amount, o.kind === 'make' ? o.make_cost : null) ?? 0;
+    if (!window.confirm(`${o.company}${o.color ? ` (${o.color})` : ''} ${fmtKg(o.actual_weight)}, 합계 ${fmtWon(total)}
+납입 처리할까요? 오늘 날짜로 완납 처리됩니다.`)) return;
+    try {
+      await api(`/orders/${o.id}/pay`, { body: {} });
+      qc.invalidateQueries();
+      toast(`${o.company} 납입 처리했습니다.`);
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  };
+
   return (
     <div className="space-y-2.5">
       <Field label="조회할 달" inline><input type="month" value={month} onChange={(e) => setMonth(e.target.value || kstMonth())} /></Field>
@@ -131,11 +147,15 @@ function Monthly() {
             {(o.status === 'unpaid' || o.status === 'paid') && (
               <Button tone="plain" className="!min-h-9 text-sm" onClick={() => kakao.send(orderKakaoText(o), drawingRefs([o], o.company), mailWarning([o], '문구'))}>카톡으로 내용 전송</Button>
             )}
-            {isAdmin && (
-              <Button tone="plain" className="ml-auto flex !min-h-9 items-center gap-1.5 text-sm text-red-700" title="삭제" aria-label="삭제" onClick={() => remove(o)}>
-                <TrashIcon /> 삭제
-              </Button>
-            )}
+            <span className="ml-auto flex items-center gap-2">
+              {o.status === 'unpaid' && noCost(o) && <span className="text-sm font-semibold text-red-600">제작비용을 입력하면 납입할 수 있습니다</span>}
+              {o.status === 'unpaid' && !noCost(o) && <Button tone="success" className="!min-h-9 text-sm" onClick={() => payOne(o)}>납입</Button>}
+              {isAdmin && (
+                <Button tone="plain" className="flex !min-h-9 items-center gap-1.5 text-sm text-red-700" title="삭제" aria-label="삭제" onClick={() => remove(o)}>
+                  <TrashIcon /> 삭제
+                </Button>
+              )}
+            </span>
           </div>
         </Card>
       ))}
